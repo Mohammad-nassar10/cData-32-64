@@ -8,7 +8,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 wee_alloc = "0.4.5"
-arrow = { path = "/home/roee88/arrow-repos/arrow-rs/arrow", default-features = false, features = ["simd", "prettyprint"]}
+arrow = { path = "/home/mohammadtn/FFI32/arrow-rs/arrow", default-features = false, features = ["prettyprint"]}
 
 [patch.crates-io]
 prettytable-rs = { git = "https://github.com/phsym/prettytable-rs", branch = "master"}

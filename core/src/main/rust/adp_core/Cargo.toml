@@ -13,3 +13,4 @@ libc = "0.2.7"
 jni = "0.19.0"
 wasmer = "2.0"
 wasmer-wasi = "2.0"
+arrow = { path = "/home/mohammadtn/FFI32/arrow-rs/arrow", default-features = false, features = ["prettyprint"]}

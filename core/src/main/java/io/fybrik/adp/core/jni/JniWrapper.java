@@ -38,4 +38,6 @@ public class JniWrapper {
 
   public native void wasmDealloc(long instancePtr, long offset, long size);
 
+  // public native void convert_to_32(long instancePtr, long contextPtr);
+
 }

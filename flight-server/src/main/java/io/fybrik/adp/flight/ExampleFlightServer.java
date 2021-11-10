@@ -45,6 +45,7 @@ public class ExampleFlightServer implements AutoCloseable {
         options.addOption("h", "host", true, "Host");
         options.addOption("p", "port", true, "Port");
         options.addOption("t", "transform", true, "Transformation WASM module (optional)");
+            System.out.println("gg");
         CommandLineParser parser = new DefaultParser();
         CommandLine line = parser.parse(options, args);
         String host = line.getOptionValue("host", "localhost");

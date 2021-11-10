@@ -1,7 +1,11 @@
 use std::{convert::TryInto, mem};
+use std::ffi::CStr;
+use std::os::raw::c_char;
+use arrow::ffi::FFI_ArrowSchema;
 
 #[repr(C)]
 #[derive(Debug)]
+#[derive(Copy, Clone)]
 pub(crate) struct FFI32_ArrowSchema {
     format: u32,
     name: u32,
@@ -9,12 +13,13 @@ pub(crate) struct FFI32_ArrowSchema {
     flags: i64,
     n_children: i64,
     children: u32,
-    dictionary: u32,
-    release: Option<u32>,
-    private_data: u32,
+    pub dictionary: u32,
+    pub release: Option<unsafe extern "C" fn(arg1: *mut FFI32_ArrowSchema)>,
+    // pub release: Option<u32>,
+    pub private_data: u32,
 }
 
-fn to32(base: u64, ptr: u64) -> u32 {
+pub fn to32(base: u64, ptr: u64) -> u32 {
     if ptr == 0 {
         return 0;
     }
@@ -78,7 +83,7 @@ impl FFI32_ArrowSchema {
             root.dictionary = dictionary as u32;
         }
 
-        root.release = Some(s64.release.unwrap() as u32);
+        // root.release = Some(s64.release.unwrap());
         // root.private_data = 
 
         // Move old schema
@@ -86,7 +91,34 @@ impl FFI32_ArrowSchema {
 
         root
     }
+    
+    /// returns the format of this schema.
+    pub fn format(&self) -> &str {
+        assert!(self.format != 0);
+        // safe because the lifetime of `self.format` equals `self`
+        unsafe { CStr::from_ptr(self.format as *const c_char) }
+            .to_str()
+            .expect("The external API has a non-utf8 as format")
+    }
 
+    /// returns the name of this schema.
+    pub fn name(&self) -> &str {
+        println!("get name");
+        assert!(self.name != 0);
+        // safe because the lifetime of `self.name` equals `self`
+        unsafe { CStr::from_ptr(self.name as *const c_char) }
+            .to_str()
+            .expect("The external API has a non-utf8 as name")
+    }
+
+    pub fn child(&self, index: usize) -> &Self {
+        assert!(index < self.n_children as usize);
+        unsafe {
+            let children = self.children as *mut *mut FFI32_ArrowSchema; 
+            children.add(index).as_ref().unwrap().as_ref().unwrap() 
+        }
+    }
+    
 }
 
 #[repr(C)]
@@ -97,7 +129,7 @@ pub(crate) struct FFI64_ArrowSchema {
     metadata: u64,
     flags: i64,
     n_children: i64,
-    children: u64,
+    pub children: u64,
     dictionary: u64,
     release: Option<u64>,
     private_data: u64,
@@ -147,27 +179,54 @@ impl FFI64_ArrowSchema {
             .map(Box::new)
             .map(Box::into_raw)
             .collect::<Box<_>>();
-        root.children = children_ptr.as_ptr() as u32;
+        root.children = children_ptr.as_ptr() as u64;
         mem::forget(children_ptr);
         
-        if s64.dictionary != 0 {
-            let dictionary = to32(base, s64.dictionary) as *mut FFI64_ArrowSchema;
+        if s32.dictionary != 0 {
+            let dictionary = to64(base, s32.dictionary) as *mut FFI32_ArrowSchema;
             let dictionary = unsafe { &mut*dictionary };
-            let dictionary = FFI32_ArrowSchema::from(base, dictionary);
+            let dictionary = FFI64_ArrowSchema::from(base, dictionary);
             let dictionary = Box::from(dictionary);
             let dictionary = Box::into_raw(dictionary);
-            root.dictionary = dictionary as u32;
+            root.dictionary = dictionary as u64;
         }
 
-        root.release = Some(s64.release.unwrap() as u32);
+        root.release = Some(s32.release.unwrap() as u64);
         // root.private_data = 
 
         // Move old schema
-        s64.release = None;
+        s32.release = None;
 
         root
     }
 
+
+    /// returns the format of this schema.
+    pub fn format(&self) -> &str {
+        assert!(self.format != 0);
+        // safe because the lifetime of `self.format` equals `self`
+        unsafe { CStr::from_ptr(self.format as *const _) }
+            .to_str()
+            .expect("The external API has a non-utf8 as format")
+    }
+
+    /// returns the name of this schema.
+    pub fn name(&self) -> &str {
+        println!("get name 64");
+        assert!(self.name != 0);
+        // safe because the lifetime of `self.name` equals `self`
+        unsafe { CStr::from_ptr(self.name as *const c_char) }
+            .to_str()
+            .expect("The external API has a non-utf8 as name")
+    }
+
+    pub fn child(&self, base: u64, index: usize) -> &Self {
+        assert!(index < self.n_children as usize);
+        unsafe {
+            let children = to32(base, self.children) as *mut *mut FFI64_ArrowSchema;
+            (to32(base, (children.add(index).as_ref().unwrap() as *const _) as u64) as *mut FFI64_ArrowSchema).as_ref().unwrap() 
+        }
+    }
 }
 
 // impl From<&FFI64_ArrowSchema> for FFI32_ArrowSchema {

@@ -8,4 +8,6 @@ public interface Transformer extends AutoCloseable {
     VectorSchemaRoot root();
 
     void next();
+
+    VectorSchemaRoot originalRoot();
 }

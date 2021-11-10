@@ -61,6 +61,11 @@ public class JniLoader {
   }
 
   private void load(String name) {
+    System.out.println(name);
+    if (name.equalsIgnoreCase("adp_core")) {
+      System.load("/home/mohammadtn/FFI32/arrow-data-plane/core/src/main/rust/adp_core/target/debug/libadp_core.so");
+      return;
+    }
     final String libraryToLoad = System.mapLibraryName(name);
     try {
       File temp = File.createTempFile("jnilib-", ".tmp", new File(System.getProperty("java.io.tmpdir")));

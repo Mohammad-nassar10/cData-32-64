@@ -27,6 +27,7 @@
     <dep.junit.jupiter.version>5.7.2</dep.junit.jupiter.version>
   </properties>
 
+
   <dependencies>
     <dependency>
         <groupId>org.apache.arrow</groupId>
@@ -37,7 +38,7 @@
     </dependency>
     <dependency>
       <groupId>org.apache.arrow</groupId>
-      <artifactId>arrow-ffi</artifactId>
+      <artifactId>arrow-c-data</artifactId>
       <version>${dep.arrow.version}</version>
       <scope>compile</scope>
       <classifier>${dep.arrow.vector.classifier}</classifier>
@@ -84,7 +85,7 @@
         </includes>
       </resource>
     </resources>
-    <plugins>
+    <!-- <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-antrun-plugin</artifactId>
@@ -101,14 +102,14 @@
               <target>
                 <mkdir dir="${project.build.directory}/native"/>
                 <exec executable="cargo" dir="${project.build.directory}/native" failonerror="true">
-                  <arg line="build --release --manifest-path=${basedir}/src/main/rust/adp_core/Cargo.toml --target-dir ."/>
+                  <arg line="build release manifest-path=${basedir}/src/main/rust/adp_core/Cargo.toml target-dir ."/>
                 </exec>
               </target>
             </configuration>
           </execution>
         </executions>
       </plugin>
-    </plugins>
+    </plugins> -->
 
     <pluginManagement><!-- lock down plugins versions to avoid using Maven defaults (may be moved to parent pom) -->
       <plugins>

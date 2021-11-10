@@ -44,12 +44,13 @@ public class ExampleFlightClient {
         FlightStream s = client.getStream(ticket);
         int i = 0;
         VectorSchemaRoot root = null;
-
+        
         long start = System.currentTimeMillis();
         while (s.next()) {
+            System.out.println("get stream");
             root = s.getRoot();
             i++;
-            // System.out.println(i);
+            System.out.println(i);
             // System.out.println(root.getVector(0));
             // System.out.println(root.getVector(1));
             // System.out.println(root.getVector(2));

@@ -31,7 +31,7 @@ public class ExampleProducer extends NoOpFlightProducer implements AutoCloseable
     private final Location location;
     private final BufferAllocator allocator;
     private final Transformer transformer;
-    private final int RecordsPerBatch = 1048576;
+    private final int RecordsPerBatch = 100;
     private final VectorSchemaRoot constVectorSchemaRoot;
     private boolean isNonBlocking = false;
 
@@ -63,7 +63,9 @@ public class ExampleProducer extends NoOpFlightProducer implements AutoCloseable
                 d.setValueCount(RecordsPerBatch);
                 List<Field> fields = Arrays.asList(a.getField(), b.getField(), c.getField(), d.getField());
                 List<FieldVector> vectors = Arrays.asList(a, b, c, d);
-                return new VectorSchemaRoot(fields, vectors);
+                VectorSchemaRoot vsr = new VectorSchemaRoot(fields, vectors);
+                // System.out.println("vsr producer = " + vsr.contentToTSVString());
+                return vsr;
             }
 
             a.setSafe(j, (long)j);
@@ -78,9 +80,10 @@ public class ExampleProducer extends NoOpFlightProducer implements AutoCloseable
         Runnable loadData = () -> {
             listener.setUseZeroCopy(true);
             VectorSchemaRoot transformedRoot = null;
-
-            for(int i = 0; i < 1000; ++i) {
+            for(int i = 0; i < 100; ++i) {
+                // System.out.println("init = " + this.transformer.originalRoot().contentToTSVString());
                 this.transformer.next();
+                // System.out.println("get stream = " + this.transformer.root().contentToTSVString());
                 if (transformedRoot == null) {
                     transformedRoot = this.transformer.root();
                     if (transformedRoot != null) {

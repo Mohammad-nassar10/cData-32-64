@@ -1,7 +1,10 @@
 use std::{convert::TryInto, mem};
+use core::ffi::c_void;
+use arrow::buffer::Buffer;
+
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct FFI32_ArrowArray {
     pub(crate) length: i64,
     pub(crate) null_count: i64,
@@ -16,7 +19,7 @@ pub(crate) struct FFI32_ArrowArray {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct FFI64_ArrowArray {
     pub(crate) length: i64,
     pub(crate) null_count: i64,
@@ -54,6 +57,7 @@ impl FFI32_ArrowArray {
     }
 
     pub fn from(base: u64, s64: &mut FFI64_ArrowArray) -> Self {
+        println!("array 64 from");
         let mut root = Self::empty();
 
         root.length = s64.length;
@@ -67,8 +71,10 @@ impl FFI32_ArrowArray {
         let buffers_data: Vec<u32> = (0..s64.n_buffers as usize)
             .map(|i| {
                 let buffer = unsafe { buffers_array.add(i) };
+                unsafe { println!("n_buffers = {:?}", s64.n_buffers); }
                 let buffer = unsafe { *buffer };
                 let buffer = to32(base, buffer);
+                unsafe { println!("buffer = {:?}", *(buffer as *const Buffer)); }
                 buffer
             })
             .collect();
@@ -115,7 +121,7 @@ impl FFI32_ArrowArray {
         // root.private_data
 
         // Move old array
-        s64.release = None;
+        // s64.release = None;
 
         root
 
