@@ -65,7 +65,7 @@ public class WasmTransformer implements Transformer {
         System.out.println("fill input schema");
         // long schemaPtr = JniWrapper.get().getInputSchema(this.instancePtr, context);
         ArrowSchema inputSchema = ArrowSchema.wrap(base + schemaPtr);
-        System.out.println("next input schema " + inputSchema.snapshot().format + ", origin schema " + originalRoot.getSchema());
+        System.out.println("next input schema " + inputSchema.snapshot().n_children + ", origin schema " + originalRoot.getSchema());
         // Data.exportSchema(allocator, originalRoot.getSchema(), null, inputSchema);
         System.out.println("fill input array, original root = ");
         // long arrayPtr = JniWrapper.get().getInputArray(this.instancePtr, context);
@@ -74,7 +74,7 @@ public class WasmTransformer implements Transformer {
         // Use Java c data to fill the schema and the array with the original root
         Data.exportVectorSchemaRoot(allocator, originalRoot, null, inputArray, inputSchema);
         System.out.println("next input schema private data " + inputSchema.snapshot().release + ", origin schema " + originalRoot.getSchema());
-        System.out.println("arrow array " + inputArray.snapshot().length);
+        System.out.println("arrow array " + inputArray.snapshot().n_children);
         
         // VectorSchemaRoot roundTrip = Data.importVectorSchemaRoot(allocator, inputArray, inputSchema, null);
         // System.out.println("round trip " + roundTrip.contentToTSVString());
@@ -82,10 +82,25 @@ public class WasmTransformer implements Transformer {
         // JniWrapper.get().convert_to_32(instancePtr, context);
         
 
-        JniWrapper.get().transform(instancePtr, context);
         
-        // // TODO: read output
+        // read output
+        long transformResultPtr = JniWrapper.get().transform(instancePtr, context);
+        long out_schema = JniWrapper.get().getOutputSchema(transformResultPtr);
+        long out_array = JniWrapper.get().getOutputArray(transformResultPtr);
+        ArrowSchema outSchema = ArrowSchema.wrap(out_schema);
+        ArrowArray outArray = ArrowArray.wrap(out_array);
+        System.out.println("java transform result " + out_schema + ",, " + out_array + " format " + outSchema.snapshot().format + " name " + outSchema.snapshot().name + " metadata " + outSchema.snapshot().metadata + 
+        " flags " + outSchema.snapshot().flags + " n_children = " + outSchema.snapshot().n_children + " children " + outSchema.snapshot().children + " dict " + outSchema.snapshot().dictionary
+        + " release " + outSchema.snapshot().release + " private data " + outSchema.snapshot().private_data);
 
+        System.out.println("java transform result " + out_schema + ",, " + out_array + " length " + outArray.snapshot().length + " null_count " + outArray.snapshot().null_count 
+        + " offset " + outArray.snapshot().offset + " n_buffers " + outArray.snapshot().n_buffers + " n_children " + outArray.snapshot().n_children + " children " 
+        + outArray.snapshot().children + " buffers " + outArray.snapshot().buffers + " dict " + outArray.snapshot().dictionary
+        + " release " + outArray.snapshot().release + " private data " + outArray.snapshot().private_data);
+
+        VectorSchemaRoot outVsr = Data.importVectorSchemaRoot(allocator, outArray, outSchema, null);
+        System.out.println("java out vsr " + outVsr.contentToTSVString());
+        
 
         System.out.println("finish");
         JniWrapper.get().finish(instancePtr, context);

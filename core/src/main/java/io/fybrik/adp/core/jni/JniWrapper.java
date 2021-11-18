@@ -20,7 +20,7 @@ public class JniWrapper {
 
   public native long prepare(long instancePtr);
 
-  public native void transform(long instancePtr, long contextPtr);
+  public native long transform(long instancePtr, long contextPtr);
 
   public native void finish(long instancePtr, long contextPtr);
 
@@ -28,9 +28,9 @@ public class JniWrapper {
 
   public native long getInputArray(long instancePtr, long contextPtr);
 
-  public native long getOutputSchema(long instancePtr, long contextPtr);
+  public native long getOutputSchema(long contextPtr);
 
-  public native long getOutputArray(long instancePtr, long contextPtr);
+  public native long getOutputArray(long contextPtr);
 
   public native long wasmAlloc(long instancePtr, long size);
 

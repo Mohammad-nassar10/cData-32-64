@@ -1,12 +1,15 @@
-use std::io;
+use std::ptr::NonNull;
+use std::{io, mem};
 use std::sync::Arc;
+use arrow::buffer::Buffer;
 use wasmer::{Function, NativeFunc, imports};
 use wasmer::{Cranelift, Instance, Module, Store, Universal};
 use wasmer_wasi::WasiState;
-use arrow::ffi::{FFI_ArrowArray, FFI_ArrowSchema};
-use arrow::array::{make_array_from_raw};
+use arrow::ffi::{self, ArrowArrayRef, FFI_ArrowArray, FFI_ArrowSchema};
+use arrow::array::{Array, make_array_from_raw};
 
-use crate::arch::{FFI32_ArrowSchema, FFI64_ArrowSchema, FFI64_ArrowArray, FFI32_ArrowArray, release_exported_schema, to32, GLOBAL_ENV};
+use crate::arch::{FFI32_ArrowArray, FFI32_ArrowSchema, FFI64_ArrowArray, FFI64_ArrowSchema, GLOBAL_ENV, release_exported_array, release_exported_schema, release_exported_schema64, release_exported_array64, to32, to64};
+use crate::types::{Pointer, jptr};
 
 #[repr(C)]
 #[derive(Clone)]
@@ -22,6 +25,10 @@ pub struct CoreInstance {
     pub transform_func: NativeFunc<u32, ()>,
     // context ptr -> void
     pub finalize_tansform_func: NativeFunc<u32, ()>,
+    // schema32 ptr -> void
+    pub release_schema32_func: NativeFunc<u32, ()>,
+    // array32 ptr -> void
+    pub release_array32_func: NativeFunc<u32, ()>,
 }
 
 #[repr(C)]
@@ -34,7 +41,12 @@ pub struct FFI_TransformContext {
     pub out_array: u32,
 }
 
-
+#[repr(C)]
+#[derive(Debug)]
+pub struct FFI_TransformOutput {
+    pub out_schema: jptr,
+    pub out_array: jptr,
+}
 
 impl CoreInstance {
     /// create a new [`Ffi_ArrowSchema`]. This fails if the fields' [`DataType`] is not supported.
@@ -42,10 +54,12 @@ impl CoreInstance {
         let store = Store::new(&Universal::new(Cranelift::default()).engine());
         let module = Module::new(&store, module_bytes).unwrap();
         // let mut wasi_env = WasiState::new("transformer").finalize().unwrap();
-        let release_native = Function::new_native(&store, release_exported_schema);
+        let release_native_schema = Function::new_native(&store, release_exported_schema);
+        let release_native_array = Function::new_native(&store, release_exported_array);
         let import_object = imports! { 
             "env" => {
-                "release_func" => release_native,
+                "release_func" => release_native_schema,
+                "release_array_func" => release_native_array,
             },
         };
         // let import_object = wasi_env.import_object(&module).unwrap();
@@ -77,13 +91,25 @@ impl CoreInstance {
             .get_native_function::<u32, ()>("finalize_tansform")
             .unwrap();
 
+        let release_schema32_func = instance
+            .exports
+            .get_native_function::<u32, ()>("release_schema32")
+            .unwrap();
+            
+        let release_array32_func = instance
+            .exports
+            .get_native_function::<u32, ()>("release_array32")
+            .unwrap();
+
         Ok(Self {
             instance,
             allocate_buffer_func,
             deallocate_buffer_func,
             prepare_transform_func,
             transform_func,
-            finalize_tansform_func
+            finalize_tansform_func, 
+            release_schema32_func,
+            release_array32_func
         })
     }
 
@@ -113,54 +139,103 @@ impl CoreInstance {
         self.prepare_transform_func.call(base).unwrap()
     }
 
-    pub fn transform(&self, context: u32) {
-        println!("transform rust side {:?}, {:?}", context, context as u64 + self.allocator_base());
-        
-        let ctx = (context as u64 + self.allocator_base()) as *mut FFI_TransformContext;
+    pub fn transform(&self, context: u32) -> jptr {
+        let base = self.allocator_base();
+        println!("transform rust side {:?}, {:?}", context, to64(base, context));
+        // Get the schema and arrow of 64 bit from the context
+        let ctx = to64(base, context) as *mut FFI_TransformContext;
         let ctx = unsafe{ &mut *ctx };
-        println!("ctx = {:?}", ctx);
-
-        let in_schema64 = (ctx.in_schema as u64 + ctx.base) as *mut FFI_ArrowSchema;
-        unsafe { println!("transform jni schema = {:?}", *in_schema64); }
+        // println!("ctx = {:?}", ctx);
+        // let in_schema64 = (ctx.in_schema as u64 + ctx.base) as *mut FFI_ArrowSchema;
+        // // unsafe { println!("transform jni schema = {:?}", *in_schema64); }
         let in_schema64 = (ctx.in_schema as u64 + ctx.base) as *mut FFI64_ArrowSchema;
-        unsafe { println!("transform jni schema 64 = {:?}", *in_schema64); }
+        // unsafe { println!("transform jni schema 64 = {:?}", *in_schema64); }
         let in_array64 = (ctx.in_array as u64 + ctx.base) as *mut FFI64_ArrowArray;
+        // Allocate new, empty arrow and schema of 32 bit
         let schema32 = FFI32_ArrowSchema::new(&self);
         let array32 = FFI32_ArrowArray::new(&self);
         unsafe { 
-            println!("schema64 = {:?},, schema 32 = {:?}", (*in_schema64), (schema32));
-            println!("array64 = {:?},, array 32 = {:?}", (*in_array64), (*array32));
-            // let schema = Arc::into_raw(Arc::new(*in_schema64)) as *const FFI_ArrowSchema;
-            // let array = Arc::into_raw(Arc::new(*in_array64)) as *const FFI_ArrowArray;
-            // let result = unsafe {make_array_from_raw(array, schema)};
-            // println!("transform rust side res = {:?}", result);
-
-            // println!("array64 = {:?},,", *((*in_array64).buffers as *const ));
-            // let s64 = &mut *in_schema64;
-            // let s64_children_array = s64.children as *mut *mut FFI64_ArrowSchema;
-            // let s64_child_item = unsafe { s64_children_array.add(0) };
-            // let s64_child = unsafe { &mut *(s64_child_item as *mut FFI64_ArrowSchema) };
-            // println!("children number = {:?}", s64_child);
-    
-
+            // println!("schema64 = {:?},, schema 32 = {:?}", (*in_schema64), (schema32));
+            // println!("array64 = {:?},, array 32 = {:?}", (*in_array64), (*array32));
+            // Convert the 64 bit schema to a 32 bit schema
             (*schema32).from(self, &mut *in_schema64);
             println!("schema After arch.rs from {:?}", *schema32);
+            // Convert the 64 bit array to a 32 bit array
             (*array32).from(self, &mut *in_array64);
             println!("array After arch.rs from {:?}", *array32);
-            // let schema = Arc::into_raw(Arc::new(*in_schema64)) as *const FFI_ArrowSchema;
-            // let array = Arc::into_raw(Arc::new(*in_array64)) as *const FFI_ArrowArray;
-            // // println!("release field = {:?}", (*in_schema64).format);
-            // let result = unsafe {make_array_from_raw(array, schema)};
-            // println!("transform rust side res = {:?}\nrelease field = {:?}", result, (*in_schema64).format);
         }
+        // Update the contex with the 32 bit schema and array
         ctx.in_schema = to32(ctx.base, schema32 as u64);
         ctx.in_array = to32(ctx.base, array32 as u64);
+        // Set a global variable with the schema and array in order to release them afterwards
         unsafe { GLOBAL_ENV.schema = schema32 as u64 };
-
+        unsafe { GLOBAL_ENV.array = array32 as u64 };
+        // Call the Wasm function that performs the transformation
         self.transform_func.call(context).unwrap();
+
+        // let result = FFI_TransformOutput {
+        //     out_schema: 0,
+        //     out_array: 0,
+        // };
+        // result
+        // Get the transformed schema and array
+        let out_schema32 = (ctx.out_schema as u64 + ctx.base) as *mut FFI32_ArrowSchema;
+        let out_array32 = (ctx.out_array as u64 + ctx.base) as *mut FFI32_ArrowArray;
+        unsafe { println!("transformed jni schema = {:?}", *out_schema32); }
+        // Allocate new, empty arrow and schema of 64 bit
+        let mut out_schema64 = FFI64_ArrowSchema::new();
+        let mut out_array64 = FFI64_ArrowArray::new();
+        unsafe { 
+            println!("out schema64 = {:?},, out schema 32 = {:?}", &out_schema64 as *const _ as u64, *out_schema32);
+            // println!("array64 = {:?},, array 32 = {:?}", (*in_array64), (*array32));
+            // Convert the 32 bit schema to a 64 bit schema
+            out_schema64.from(self, &mut *out_schema32);
+            println!("schema After arch.rs from 32 to 64 {:?}", out_schema64);
+            // Convert the 32 bit array to a 64 bit array
+            out_array64.from(self, &mut *out_array32);
+            println!("array After arch.rs from 32 to 64 {:?}", out_array64);
+            // println!("buffers of array After arch.rs from 32 to 64, buffers ptr = {:?}", out_array64.buffers, /*(*(out_array64.buffers as *const Vec<u64>)).get(0)*/);
+        }
+        let tmp: jptr = Pointer::new(out_schema64).into();
+        let tmp2: jptr = Pointer::new(out_array64).into();
+        unsafe { GLOBAL_ENV.schema = tmp as u64 };
+        unsafe { GLOBAL_ENV.array = tmp2 as u64 };
+        let result = FFI_TransformOutput {
+            // out_schema: &out_schema64 as *const _ as u64,
+            // out_array: &out_array64 as *const _ as u64,
+            out_schema: Pointer::new(out_schema64).into(),
+            out_array: Pointer::new(out_array64).into(),
+        };
+        // let test_schema = result.out_schema as *mut FFI_ArrowSchema;
+        // let test_array = &out_array64 as *const _ as u64 as *mut FFI_ArrowArray;
+        unsafe { println!("rust outschema = {:?}, array = {:?}", *(result.out_schema as *mut FFI64_ArrowSchema), *(result.out_array as *mut FFI64_ArrowArray));
+            // let array = ffi::ArrowArray::try_from_raw(test_array, test_schema).unwrap();
+            // // let buf = create_buffer(Arc::new((*test_array).clone()), &*(result.out_array as *mut FFI64_ArrowArray), 0, 100);
+            // println!("core.rs create buf = {:?}", array.buffers());
+        }
+        // let out_record = unsafe { make_array_from_raw(test_array, test_schema) };
+        // unsafe { println!("test schema = {:?}, array = {:?}\nrecord = {:?}", *test_schema, *test_array, out_record); }
+        unsafe { println!("rust res schema ptr = {:?}, array = {:?}", result.out_schema, result.out_array); }
+        
+        
+        // unsafe { mem::forget(*(result.out_schema as *mut FFI64_ArrowSchema)); }
+        // mem::forget(result.out_array);
+        let res = Pointer::new(result);
+        res.into()
+        // result
     }
 
     pub fn finalize_tansform(&self, context: u32) {
+        release_exported_schema64(0);
+        release_exported_array64(0);
         self.finalize_tansform_func.call(context).unwrap();
+    }
+
+    pub fn release_schema32(&self, schema32: u32) {
+        self.release_schema32_func.call(schema32).unwrap();
+    }
+
+    pub fn release_array32(&self, array32: u32) {
+        self.release_array32_func.call(array32).unwrap();
     }
 }

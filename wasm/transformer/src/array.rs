@@ -14,7 +14,7 @@ pub(crate) struct FFI32_ArrowArray {
     pub(crate) buffers: u32,
     children: u32,
     dictionary: u32,
-    release: Option<u32>,
+    release: Option<u16>,
     private_data: u32,
 }
 
@@ -116,7 +116,7 @@ impl FFI32_ArrowArray {
         // }
 
         // root.release
-        root.release = Some(s64.release.unwrap() as u32);
+        // root.release = Some(s64.release.unwrap() as u32);
 
         // root.private_data
 

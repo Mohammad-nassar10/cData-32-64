@@ -18,12 +18,20 @@ use crate::schema::{FFI32_ArrowSchema, FFI64_ArrowSchema};
 
 extern "C" {
     fn release_func(schema: u32);
+    fn release_array_func(array: u32);
 }
 // pub unsafe extern "C" fn release_func(schema: u32) {
 //     println!("release func wasm extern");
 //     let mut schema = schema as *mut FFI_ArrowSchema_helper;
 //     println!("release func schema = {:?}", *schema);
 //     (*schema).release = None;
+// }
+
+// pub unsafe extern "C" fn release_array_func(array: u32) {
+//     println!("array release func wasm extern");
+//     let mut array = array as *mut FFI_ArrowArray_helper;
+//     println!("release func array = {:?}", *array);
+//     (*array).release = None;
 // }
 
 #[repr(C)]
@@ -40,10 +48,10 @@ pub(crate) struct TransformContext {
 #[derive(Debug)]
 pub(crate) struct TransformContext32 {
     base: u64,
-    pub in_schema: u32,
-    in_array: *mut FFI32_ArrowArray,
-    out_schema: *const FFI_ArrowSchema,
-    out_array: *const FFI_ArrowArray,
+    pub(crate) in_schema: u32,
+    in_array: u32,
+    pub(crate) out_schema: u32,
+    pub(crate) out_array: u32,
 }
 
 #[repr(C)]
@@ -57,6 +65,26 @@ pub struct FFI_ArrowSchema_helper {
     children: *mut *mut FFI_ArrowSchema,
     dictionary: *mut FFI_ArrowSchema,
     release: Option<unsafe extern "C" fn(arg1: u32)>,
+    private_data: *mut c_void,
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct FFI_ArrowArray_helper {
+    pub(crate) length: i64,
+    pub(crate) null_count: i64,
+    pub(crate) offset: i64,
+    pub(crate) n_buffers: i64,
+    pub(crate) n_children: i64,
+    pub(crate) buffers: *mut *const c_void,
+    children: *mut *mut FFI_ArrowArray,
+    dictionary: *mut FFI_ArrowArray,
+    release: Option<unsafe extern "C" fn(arg1: u32)>,
+    // When exported, this MUST contain everything that is owned by this array.
+    // for example, any buffer pointed to in `buffers` must be here, as well
+    // as the `buffers` pointer itself.
+    // In other words, everything in [FFI_ArrowArray] must be owned by
+    // `private_data` and can assume that they do not outlive `private_data`.
     private_data: *mut c_void,
 }
 
@@ -82,7 +110,7 @@ impl TransformContext {
         let array = FFI32_ArrowArray::from(self.base, array);
         let array = Arc::into_raw(Arc::new(array)) as *const FFI_ArrowArray;
         
-        let result = unsafe {make_array_from_raw(array, schema)};
+        let result = unsafe { make_array_from_raw(array, schema) };
         result.ok()
     }
 
@@ -117,8 +145,8 @@ impl TransformContext32 {
     // }
 
     pub fn input(&self) -> Option<ArrayRef> {
-        println!("gg size of FFI32_ArrowSchema wasm = {:?}, size of release = {:?}, i64 = {:?}", size_of::<FFI32_ArrowSchema>(), size_of::<Option<u32>>(), size_of::<i64>());
-        // println!("gg size of FFI_ArrowSchema wasm = {:?}", size_of::<FFI_ArrowSchema>());
+        println!("gg size of FFI32_ArrowArray wasm = {:?}, size of release = {:?}, i64 = {:?}", size_of::<FFI32_ArrowArray>(), size_of::<Option<unsafe extern "C" fn(arg1: *mut FFI_ArrowArray)>>(), size_of::<i64>());
+        println!("gg size of FFI64_ArrowSchema wasm = {:?}", size_of::<FFI64_ArrowSchema>());
         // let tmp = unsafe { self.in_schema as *mut FFI32_ArrowSchema };
         // unsafe { println!("input tmp = {:?}", *tmp); }
         let mut schema = unsafe { ((self.in_schema as *mut FFI_ArrowSchema_helper)) };
@@ -150,11 +178,17 @@ impl TransformContext32 {
             // let schema = Arc::into_raw(Arc::new(schema)) as *mut FFI_ArrowSchema;
             // let schema = ffi32Toffi(schema);
             unsafe { println!("input common2 = {:?}", (*schema)); }
-            let mut array = unsafe { (*self.in_array).clone() };
-            println!("columns before from = {:?}", array.buffers);
+
+            // Array
+            let mut array = unsafe { ((self.in_array as *mut FFI_ArrowArray_helper)) };
+
+            // let mut array = unsafe { (*self.in_array).clone() };
+            println!("columns before from = {:?}", *array);
+            (*array).release = Some(release_array_func);
 
             // let array = FFI32_ArrowArray::from(self.base, array);
-            let array = Arc::into_raw(Arc::new(array)) as *const FFI_ArrowArray;
+            // let array = Arc::into_raw(Arc::new(array)) as *const FFI_ArrowArray;
+            let array = array as *const _ as *mut FFI_ArrowArray;
             unsafe { println!("input common3 = {:?}", (*array)); }
             
 
@@ -162,7 +196,9 @@ impl TransformContext32 {
             println!("input result = {:?}", result);
             
             println!("schema after make array = {:?}", *schema);
+            println!("array after make array = {:?}", *array);
             unsafe { drop((*schema).clone()) };
+            unsafe { drop((*array).clone()) };
 
             // let schema3 = unsafe { self.in_schema };
             // unsafe { println!("schema = {:?}, release = {:?}", schema, (*schema).release); }
@@ -206,4 +242,30 @@ pub unsafe extern "C" fn finalize_tansform(ctx: u32) {
     let ctx = Box::from_raw(ctx);
     Arc::from_raw(ctx.in_schema);
     Arc::from_raw(ctx.in_array);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn release_schema32(schema32: u32) {
+    println!("Wasm release 32, schema32 ptr = {:?}", schema32);
+    let schema_ptr = schema32 as *mut FFI_ArrowSchema;
+    let schema_helper_ptr = schema32 as *mut FFI_ArrowSchema_helper;
+    let schema_helper = unsafe { &*schema_helper_ptr };
+    println!("Wasm release 32 schema = {:?}", schema_helper);
+    match schema_helper.release {
+        None => (),
+        Some(release) => unsafe { release(schema_ptr as u32) },
+    };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn release_array32(array32: u32) {
+    println!("Wasm release 32, array32 ptr = {:?}", array32);
+    let array_ptr = array32 as *mut FFI_ArrowArray;
+    let array_helper_ptr = array32 as *mut FFI_ArrowArray_helper;
+    let array_helper = unsafe { &*array_helper_ptr };
+    println!("Wasm release 32 array = {:?}", array_helper);
+    match array_helper.release {
+        None => (),
+        Some(release) => unsafe { release(array_ptr as u32) },
+    };
 }

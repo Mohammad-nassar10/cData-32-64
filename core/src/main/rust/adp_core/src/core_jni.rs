@@ -1,6 +1,7 @@
 use std::convert::TryInto;
 
-use crate::core::{CoreInstance, FFI_TransformContext};
+use crate::arch::FFI64_ArrowSchema;
+use crate::core::{CoreInstance, FFI_TransformContext, FFI_TransformOutput};
 use crate::types::jptr;
 use crate::types::Pointer;
 use jni::objects::JObject;
@@ -44,9 +45,13 @@ pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_transform(
     _object: JObject,
     instance_ptr: jptr,
     context: jlong,
-) {
+) -> jptr {
     let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
-    instance.transform(context.try_into().unwrap());
+    let result = instance.transform(context.try_into().unwrap());
+    // unsafe { println!("rust outschema ptr = {:?}, schema = {:?}", *(result.out_schema as *mut FFI64_ArrowSchema), result.out_array) };
+    // let result = Pointer::new(result);
+    // result.into()
+    result
 }
 
 #[no_mangle]
@@ -75,7 +80,7 @@ pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_getInputSchema(
 }
 
 #[no_mangle]
-pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_getOutputSchema(
+pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_getOutputSchema2(
     _jre: JNIEnv,
     _object: JObject,
     instance_ptr: jptr,
@@ -85,6 +90,17 @@ pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_getOutputSchema(
     let ctx = (instance.allocator_base() + context as u64) as *const FFI_TransformContext;
     let ctx = unsafe { &*ctx };
     ctx.out_schema as jlong
+}
+
+#[no_mangle]
+pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_getOutputSchema(
+    _jre: JNIEnv,
+    _object: JObject,
+    transform_output: jlong,
+) -> jlong {
+    let out = Into::<Pointer<FFI_TransformOutput>>::into(transform_output).borrow();
+    // let out = unsafe { &*out };
+    out.out_schema as jlong
 }
 
 #[no_mangle]
@@ -102,7 +118,7 @@ pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_getInputArray(
 }
 
 #[no_mangle]
-pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_getOutputArray(
+pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_getOutputArray2(
     _jre: JNIEnv,
     _object: JObject,
     instance_ptr: jptr,
@@ -113,6 +129,17 @@ pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_getOutputArray(
     // let ctx = context as *const FFI_TransformContext;
     // let ctx = unsafe { &*ctx };
     ctx.out_array as jlong
+}
+
+#[no_mangle]
+pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_getOutputArray(
+    _jre: JNIEnv,
+    _object: JObject,
+    transform_output: jlong,
+) -> jlong {
+    let out = Into::<Pointer<FFI_TransformOutput>>::into(transform_output).borrow();
+    // let out = unsafe { &*out };
+    out.out_array as jlong
 }
 
 #[no_mangle]

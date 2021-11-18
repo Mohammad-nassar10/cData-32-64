@@ -40,6 +40,7 @@ public class ExampleProducer extends NoOpFlightProducer implements AutoCloseable
         this.allocator = allocator;
         this.transformer = transformer;
         this.constVectorSchemaRoot = this.getConstVectorSchemaRoot();
+                // System.out.println("vsr producer = " + this.constVectorSchemaRoot.contentToTSVString());
 
         this.transformer.init(this.constVectorSchemaRoot);
     }
@@ -70,7 +71,7 @@ public class ExampleProducer extends NoOpFlightProducer implements AutoCloseable
 
             a.setSafe(j, (long)j);
             b.setSafe(j, (long)j);
-            c.setSafe(j, (long)j);
+            c.setSafe(j, (long)j+1);
             d.setSafe(j, (long)j);
             ++j;
         }

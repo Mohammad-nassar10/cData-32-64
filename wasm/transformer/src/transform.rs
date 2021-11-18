@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 use crate::common::TransformContext;
 use crate::common::TransformContext32;
-use arrow::{array::{Int32Array, Int64Array, PrimitiveArray, StructArray}, compute::unary, datatypes::{DataType, Field, Int32Type, Int64Type, Schema}, record_batch::RecordBatch, util::pretty::print_batches};
+use arrow::{array::{Int32Array, Int64Array, PrimitiveArray, StructArray, Array, make_array_from_raw}, compute::unary, datatypes::{DataType, Field, Int32Type, Int64Type, Schema}, record_batch::RecordBatch, util::pretty::print_batches};
 
 
 #[no_mangle]
 pub extern "C" fn transform(ctx: u32) {
     let ctx = ctx as *mut TransformContext32;
-    let ctx = unsafe{ &*ctx };
+    let ctx = unsafe{ &mut *ctx };
     println!("wasm side transform ctx = {:?}", ctx);
     let schema = ctx.in_schema;
     // unsafe { println!("{:?}", (*schema)); }
@@ -37,8 +37,36 @@ pub extern "C" fn transform(ctx: u32) {
             Arc::new(zero_b),
         ],
     );
-    // println!("transform result = {:?}", result);
+    println!("transform result = {:?}", result);
+
+    // Convert the trabsformed record batch to ffi schema and array
+    let transformed_record = result.unwrap();
+    let struct_array: StructArray = transformed_record.into();
+    let (out_array, out_schema) = struct_array.to_raw().unwrap();
+    unsafe { println!("after transform schema ptr = {:?},, {:?}, array ptr = {:?},, {:?}", out_schema, *out_schema, out_array, *out_array); 
+        let a32 = &*out_array;
     
+
+    // // let a32_buffers_array = to64(base, a32.buffers) as *const u32;
+    // let a64_buffers_array: () = (0..a32.n_buffers as usize)
+    //     .map(|i| {
+    //         let a32_buffer = unsafe { a32.buffers.add(i) };
+    //         unsafe { println!("n_buffers = {:?}", a32.n_buffers); }
+    //         let a32_buffer = unsafe { *a32_buffer };
+    //         // let a64_buffer = to64(base, a32_buffer);
+    //         // // mem::forget(a64_buffer);
+    //         unsafe { println!("buffer 32 = {:?}", a32_buffer); }
+    //         // a64_buffer
+    //     })
+    //     .collect();
+    }
+
+
+    ctx.out_schema = out_schema as u32;
+    ctx.out_array = out_array as u32;
+    // let out_record = unsafe { make_array_from_raw(out_array, out_schema) };
+    // println!("wasm side out record = {:?}", out_record);
+
 
     // ctx.in_array   
 
