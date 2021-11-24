@@ -82,28 +82,29 @@ public class WasmTransformer implements Transformer {
         // JniWrapper.get().convert_to_32(instancePtr, context);
         
 
-        
         // read output
         long transformResultPtr = JniWrapper.get().transform(instancePtr, context);
         long out_schema = JniWrapper.get().getOutputSchema(transformResultPtr);
         long out_array = JniWrapper.get().getOutputArray(transformResultPtr);
         ArrowSchema outSchema = ArrowSchema.wrap(out_schema);
         ArrowArray outArray = ArrowArray.wrap(out_array);
-        System.out.println("java transform result " + out_schema + ",, " + out_array + " format " + outSchema.snapshot().format + " name " + outSchema.snapshot().name + " metadata " + outSchema.snapshot().metadata + 
-        " flags " + outSchema.snapshot().flags + " n_children = " + outSchema.snapshot().n_children + " children " + outSchema.snapshot().children + " dict " + outSchema.snapshot().dictionary
-        + " release " + outSchema.snapshot().release + " private data " + outSchema.snapshot().private_data);
+        // System.out.println("java transform result " + out_schema + ",, " + out_array + " format " + outSchema.snapshot().format + " name " + outSchema.snapshot().name + " metadata " + outSchema.snapshot().metadata + 
+        // " flags " + outSchema.snapshot().flags + " n_children = " + outSchema.snapshot().n_children + " children " + outSchema.snapshot().children + " dict " + outSchema.snapshot().dictionary
+        // + " release " + outSchema.snapshot().release + " private data " + outSchema.snapshot().private_data);
 
-        System.out.println("java transform result " + out_schema + ",, " + out_array + " length " + outArray.snapshot().length + " null_count " + outArray.snapshot().null_count 
-        + " offset " + outArray.snapshot().offset + " n_buffers " + outArray.snapshot().n_buffers + " n_children " + outArray.snapshot().n_children + " children " 
-        + outArray.snapshot().children + " buffers " + outArray.snapshot().buffers + " dict " + outArray.snapshot().dictionary
-        + " release " + outArray.snapshot().release + " private data " + outArray.snapshot().private_data);
+        // System.out.println("java transform result " + out_schema + ",, " + out_array + " length " + outArray.snapshot().length + " null_count " + outArray.snapshot().null_count 
+        // + " offset " + outArray.snapshot().offset + " n_buffers " + outArray.snapshot().n_buffers + " n_children " + outArray.snapshot().n_children + " children " 
+        // + outArray.snapshot().children + " buffers " + outArray.snapshot().buffers + " dict " + outArray.snapshot().dictionary
+        // + " release " + outArray.snapshot().release + " private data " + outArray.snapshot().private_data);
 
-        VectorSchemaRoot outVsr = Data.importVectorSchemaRoot(allocator, outArray, outSchema, null);
-        System.out.println("java out vsr " + outVsr.contentToTSVString());
+        transformedRoot = Data.importVectorSchemaRoot(allocator, outArray, outSchema, null);
+        // VectorSchemaRoot outVsr = Data.importVectorSchemaRoot(allocator, outArray, outSchema, null);
+        // System.out.println("java out vsr " + transformedRoot.contentToTSVString());
         
 
         System.out.println("finish");
         JniWrapper.get().finish(instancePtr, context);
+        this.transformedRoot.close();
         System.out.println("next completed");
     }
 
@@ -112,7 +113,6 @@ public class WasmTransformer implements Transformer {
             if (this.transformedRoot != null) {
                 this.transformedRoot.close();
             }
-
             this.closed = true;
         }
     }

@@ -31,7 +31,7 @@ public class ExampleProducer extends NoOpFlightProducer implements AutoCloseable
     private final Location location;
     private final BufferAllocator allocator;
     private final Transformer transformer;
-    private final int RecordsPerBatch = 100;
+    private final int RecordsPerBatch = 1024 * 1024;
     private final VectorSchemaRoot constVectorSchemaRoot;
     private boolean isNonBlocking = false;
 
@@ -81,7 +81,7 @@ public class ExampleProducer extends NoOpFlightProducer implements AutoCloseable
         Runnable loadData = () -> {
             listener.setUseZeroCopy(true);
             VectorSchemaRoot transformedRoot = null;
-            for(int i = 0; i < 100; ++i) {
+            for(int i = 0; i < 1000; ++i) {
                 // System.out.println("init = " + this.transformer.originalRoot().contentToTSVString());
                 this.transformer.next();
                 // System.out.println("get stream = " + this.transformer.root().contentToTSVString());

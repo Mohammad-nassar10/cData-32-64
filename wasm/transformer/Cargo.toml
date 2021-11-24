@@ -9,6 +9,13 @@ crate-type = ["cdylib"]
 [dependencies]
 wee_alloc = "0.4.5"
 arrow = { path = "/home/mohammadtn/FFI32/arrow-rs/arrow", default-features = false, features = ["prettyprint"]}
+dhat = "0.2.4"
+
+#[target.'cfg(not(target_env = "msvc"))'.dependencies]
+#jemallocator = "0.3.2"
 
 [patch.crates-io]
 prettytable-rs = { git = "https://github.com/phsym/prettytable-rs", branch = "master"}
+
+[profile.release]
+debug = 1

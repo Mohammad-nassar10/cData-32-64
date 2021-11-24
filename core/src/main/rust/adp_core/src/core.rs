@@ -11,6 +11,8 @@ use arrow::array::{Array, make_array_from_raw};
 use crate::arch::{FFI32_ArrowArray, FFI32_ArrowSchema, FFI64_ArrowArray, FFI64_ArrowSchema, GLOBAL_ENV, release_exported_array, release_exported_schema, release_exported_schema64, release_exported_array64, to32, to64};
 use crate::types::{Pointer, jptr};
 
+use dhat::Dhat;
+
 #[repr(C)]
 #[derive(Clone)]
 pub struct CoreInstance {
@@ -51,6 +53,8 @@ pub struct FFI_TransformOutput {
 impl CoreInstance {
     /// create a new [`Ffi_ArrowSchema`]. This fails if the fields' [`DataType`] is not supported.
     pub fn try_new(module_bytes: &[u8]) -> Result<Self, io::Error> {
+        // let _dhat = Dhat::start_heap_profiling();
+
         let store = Store::new(&Universal::new(Cranelift::default()).engine());
         let module = Module::new(&store, module_bytes).unwrap();
         // let mut wasi_env = WasiState::new("transformer").finalize().unwrap();
@@ -145,18 +149,12 @@ impl CoreInstance {
         // Get the schema and arrow of 64 bit from the context
         let ctx = to64(base, context) as *mut FFI_TransformContext;
         let ctx = unsafe{ &mut *ctx };
-        // println!("ctx = {:?}", ctx);
-        // let in_schema64 = (ctx.in_schema as u64 + ctx.base) as *mut FFI_ArrowSchema;
-        // // unsafe { println!("transform jni schema = {:?}", *in_schema64); }
         let in_schema64 = (ctx.in_schema as u64 + ctx.base) as *mut FFI64_ArrowSchema;
-        // unsafe { println!("transform jni schema 64 = {:?}", *in_schema64); }
         let in_array64 = (ctx.in_array as u64 + ctx.base) as *mut FFI64_ArrowArray;
         // Allocate new, empty arrow and schema of 32 bit
         let schema32 = FFI32_ArrowSchema::new(&self);
         let array32 = FFI32_ArrowArray::new(&self);
         unsafe { 
-            // println!("schema64 = {:?},, schema 32 = {:?}", (*in_schema64), (schema32));
-            // println!("array64 = {:?},, array 32 = {:?}", (*in_array64), (*array32));
             // Convert the 64 bit schema to a 32 bit schema
             (*schema32).from(self, &mut *in_schema64);
             println!("schema After arch.rs from {:?}", *schema32);
@@ -170,15 +168,14 @@ impl CoreInstance {
         // Set a global variable with the schema and array in order to release them afterwards
         unsafe { GLOBAL_ENV.schema = schema32 as u64 };
         unsafe { GLOBAL_ENV.array = array32 as u64 };
+
+        // let result = unsafe { make_array_from_raw(array, schema) };
+        // println!("result = {:?}", result);
+
         // Call the Wasm function that performs the transformation
         self.transform_func.call(context).unwrap();
 
-        // let result = FFI_TransformOutput {
-        //     out_schema: 0,
-        //     out_array: 0,
-        // };
-        // result
-        // Get the transformed schema and array
+        // Convert back from 32 to 64 after transformation
         let out_schema32 = (ctx.out_schema as u64 + ctx.base) as *mut FFI32_ArrowSchema;
         let out_array32 = (ctx.out_array as u64 + ctx.base) as *mut FFI32_ArrowArray;
         unsafe { println!("transformed jni schema = {:?}", *out_schema32); }
@@ -187,7 +184,6 @@ impl CoreInstance {
         let mut out_array64 = FFI64_ArrowArray::new();
         unsafe { 
             println!("out schema64 = {:?},, out schema 32 = {:?}", &out_schema64 as *const _ as u64, *out_schema32);
-            // println!("array64 = {:?},, array 32 = {:?}", (*in_array64), (*array32));
             // Convert the 32 bit schema to a 64 bit schema
             out_schema64.from(self, &mut *out_schema32);
             println!("schema After arch.rs from 32 to 64 {:?}", out_schema64);
@@ -196,13 +192,13 @@ impl CoreInstance {
             println!("array After arch.rs from 32 to 64 {:?}", out_array64);
             // println!("buffers of array After arch.rs from 32 to 64, buffers ptr = {:?}", out_array64.buffers, /*(*(out_array64.buffers as *const Vec<u64>)).get(0)*/);
         }
-        let tmp: jptr = Pointer::new(out_schema64).into();
-        let tmp2: jptr = Pointer::new(out_array64).into();
-        unsafe { GLOBAL_ENV.schema = tmp as u64 };
-        unsafe { GLOBAL_ENV.array = tmp2 as u64 };
+        // Set a global variable with the schema and array in order to release them afterwards
+        let out_schema64_ptr: jptr = Pointer::new(out_schema64).into();
+        let out_array64_ptr: jptr = Pointer::new(out_array64).into();
+        unsafe { GLOBAL_ENV.schema = out_schema64_ptr as u64 };
+        unsafe { GLOBAL_ENV.array = out_array64_ptr as u64 };
+        // The result is pointers to the transformed schema and array
         let result = FFI_TransformOutput {
-            // out_schema: &out_schema64 as *const _ as u64,
-            // out_array: &out_array64 as *const _ as u64,
             out_schema: Pointer::new(out_schema64).into(),
             out_array: Pointer::new(out_array64).into(),
         };
@@ -222,7 +218,13 @@ impl CoreInstance {
         // mem::forget(result.out_array);
         let res = Pointer::new(result);
         res.into()
-        // result
+
+        // let result = FFI_TransformOutput {
+        //     out_schema: 0,
+        //     out_array: 0,
+        // };
+        // let res = Pointer::new(result);
+        // res.into()
     }
 
     pub fn finalize_tansform(&self, context: u32) {

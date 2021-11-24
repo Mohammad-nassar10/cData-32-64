@@ -47,7 +47,7 @@ public class ExampleFlightClient {
         
         long start = System.currentTimeMillis();
         while (s.next()) {
-            System.out.println("get stream");
+            // System.out.println("get stream");
             root = s.getRoot();
             i++;
             System.out.println(i);

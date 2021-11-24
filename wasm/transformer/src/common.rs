@@ -55,6 +55,14 @@ pub(crate) struct TransformContext32 {
 }
 
 #[repr(C)]
+#[derive(Debug)]
+pub(crate) struct Result {
+    pub(crate) array_ref: Option<ArrayRef>,
+    pub(crate) ffi_schema: *mut FFI_ArrowSchema,
+    pub(crate) ffi_array: *mut FFI_ArrowArray,
+}
+
+#[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct FFI_ArrowSchema_helper {
     format: *const c_char,
@@ -134,83 +142,35 @@ fn ffi32Toffi(schema: FFI32_ArrowSchema) -> *mut FFI_ArrowSchema {
 }
 
 impl TransformContext32 {
-    // pub fn input_schema(&self) -> Option<Schema> {
-    //     let schema = unsafe {&mut*self.in_schema};
-    //     let schema = FFI32_ArrowSchema::from(self.base, schema);
-    //     let schema = Arc::into_raw(Arc::new(schema)) as *const FFI_ArrowSchema;
-    //     let schema = unsafe{&*schema};
-    //     println!("format {}", schema.format());
-    //     Schema::try_from(schema).ok()
-    //     // None
-    // }
-
-    pub fn input(&self) -> Option<ArrayRef> {
-        println!("gg size of FFI32_ArrowArray wasm = {:?}, size of release = {:?}, i64 = {:?}", size_of::<FFI32_ArrowArray>(), size_of::<Option<unsafe extern "C" fn(arg1: *mut FFI_ArrowArray)>>(), size_of::<i64>());
-        println!("gg size of FFI64_ArrowSchema wasm = {:?}", size_of::<FFI64_ArrowSchema>());
-        // let tmp = unsafe { self.in_schema as *mut FFI32_ArrowSchema };
-        // unsafe { println!("input tmp = {:?}", *tmp); }
+    // Gets the input ffi schema and ffi array (32bit) and returns the array ref to build the record batch
+    pub fn input(&self) -> Result {
+        // println!("gg size of FFI32_ArrowArray wasm = {:?}, size of release = {:?}, i64 = {:?}", size_of::<FFI32_ArrowArray>(), size_of::<Option<unsafe extern "C" fn(arg1: *mut FFI_ArrowArray)>>(), size_of::<i64>());
+        // println!("gg size of FFI64_ArrowSchema wasm = {:?}", size_of::<FFI64_ArrowSchema>());
+        // Get the schema and change its release function to the imported release function
+        // Due to the fact that the release field is private, we use a helper struct which has the same fields as FFI_ArrowSchema
         let mut schema = unsafe { ((self.in_schema as *mut FFI_ArrowSchema_helper)) };
-        // schema.release = Some(123456);
-        // schema.dictionary = 123456;
         println!("input common = {:?}", schema);
-        // let schema = &schema as *const _ as *mut FFI_ArrowSchema_helper;
-        // let mut schema = unsafe { *schema };
-        // let private_data = (*schema).private_data;
-        // let tmp = &schema as *const _ as *mut FFI_ArrowSchema_tmp;
-        // let tmp: FFI_ArrowSchema_tmp = unsafe { std::mem::transmute(schema) };
         unsafe {
-            // println!("input common tmp = {:?}, {:?}", (tmp), private_data);
-            // let tmp = tmp as *mut _;
-            // let tmp1 = (tmp as u32 + 16) as *const u32;
-            // println!("ptr read = {:?}, tmp = {:?}", std::ptr::read(tmp1), tmp);
-            // let schema2 = &tmp as *const _ as *mut FFI_ArrowSchema_tmp2;
-            // let schema2 = &schema as *const _ as *mut FFI_ArrowSchema_helper;
-            // (*schema2).private_data = private_data as *mut c_void;
             (*schema).release = Some(release_func);
-            // (*schema2).release = None;
             let fun_ptr = release_func as *const () as u64;
-            println!("pointer to function = {:?}", fun_ptr);
-            println!("input common tmp2 = {:?}", schema);
-        
-        
-            // let schema = FFI32_ArrowSchema::from(self.base, schema);
             let schema = schema as *const _ as *mut FFI_ArrowSchema;
-            // let schema = Arc::into_raw(Arc::new(schema)) as *mut FFI_ArrowSchema;
-            // let schema = ffi32Toffi(schema);
             unsafe { println!("input common2 = {:?}", (*schema)); }
 
-            // Array
+            // The same for the array, to change the release field
             let mut array = unsafe { ((self.in_array as *mut FFI_ArrowArray_helper)) };
-
-            // let mut array = unsafe { (*self.in_array).clone() };
-            println!("columns before from = {:?}", *array);
             (*array).release = Some(release_array_func);
-
-            // let array = FFI32_ArrowArray::from(self.base, array);
-            // let array = Arc::into_raw(Arc::new(array)) as *const FFI_ArrowArray;
             let array = array as *const _ as *mut FFI_ArrowArray;
             unsafe { println!("input common3 = {:?}", (*array)); }
-            
-
+            // Build the array from c-data interface
             let result = unsafe { make_array_from_raw(array, schema) };
-            println!("input result = {:?}", result);
             
-            println!("schema after make array = {:?}", *schema);
-            println!("array after make array = {:?}", *array);
-            unsafe { drop((*schema).clone()) };
-            unsafe { drop((*array).clone()) };
-
-            // let schema3 = unsafe { self.in_schema };
-            // unsafe { println!("schema = {:?}, release = {:?}", schema, (*schema).release); }
-            // let release_func = unsafe { std::mem::transmute::<*const (), fn(u32)>((*schema).release.unwrap() as *const()) };
-            // match (*schema2).release {
-            //     None => (),
-            //     Some(release) => unsafe { release(schema as u32) },
-            // };
-            // unsafe { release_func(schema as u32); }
             println!("after release");
-            result.ok()
-            // None
+            let res = Result {
+                array_ref: result.ok(),
+                ffi_schema: schema,
+                ffi_array: array,
+            };
+            res
         }
     }
 
@@ -248,24 +208,26 @@ pub unsafe extern "C" fn finalize_tansform(ctx: u32) {
 pub unsafe extern "C" fn release_schema32(schema32: u32) {
     println!("Wasm release 32, schema32 ptr = {:?}", schema32);
     let schema_ptr = schema32 as *mut FFI_ArrowSchema;
-    let schema_helper_ptr = schema32 as *mut FFI_ArrowSchema_helper;
-    let schema_helper = unsafe { &*schema_helper_ptr };
-    println!("Wasm release 32 schema = {:?}", schema_helper);
-    match schema_helper.release {
-        None => (),
-        Some(release) => unsafe { release(schema_ptr as u32) },
-    };
+    // let schema_helper_ptr = schema32 as *mut FFI_ArrowSchema_helper;
+    // let schema_helper = unsafe { &*schema_helper_ptr };
+    // println!("Wasm release 32 schema = {:?}", schema_helper);
+    // match schema_helper.release {
+    //     None => (),
+    //     Some(release) => unsafe { release(schema_ptr as u32) },
+    // };
+    unsafe { drop((*schema_ptr).clone()) };
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn release_array32(array32: u32) {
     println!("Wasm release 32, array32 ptr = {:?}", array32);
     let array_ptr = array32 as *mut FFI_ArrowArray;
-    let array_helper_ptr = array32 as *mut FFI_ArrowArray_helper;
-    let array_helper = unsafe { &*array_helper_ptr };
-    println!("Wasm release 32 array = {:?}", array_helper);
-    match array_helper.release {
-        None => (),
-        Some(release) => unsafe { release(array_ptr as u32) },
-    };
+    // let array_helper_ptr = array32 as *mut FFI_ArrowArray_helper;
+    // let array_helper = unsafe { &*array_helper_ptr };
+    // println!("Wasm release 32 array = {:?}", array_helper);
+    // match array_helper.release {
+    //     None => (),
+    //     Some(release) => unsafe { release(array_ptr as u32) },
+    // };
+    unsafe { drop((*array_ptr).clone()) };
 }

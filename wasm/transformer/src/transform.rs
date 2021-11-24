@@ -12,24 +12,29 @@ pub extern "C" fn transform(ctx: u32) {
     println!("wasm side transform ctx = {:?}", ctx);
     let schema = ctx.in_schema;
     // unsafe { println!("{:?}", (*schema)); }
-    let array = ctx.input().unwrap();
+    let input_result = ctx.input();
+    // Build the record batch from the input
+    let array = input_result.array_ref.unwrap();
     println!("transform wasm calling input()");
     let as_structarray = array.as_any().downcast_ref::<StructArray>().unwrap();
     let input = RecordBatch::from(as_structarray);
     // let _ = print_batches(&[input]);
-
     let col_a = input.column(0).as_any().downcast_ref::<Int64Array>().unwrap();
     // println!("col a {:?}", col_a);
-
-    let col_b = input.column(1).as_any().downcast_ref::<Int64Array>().unwrap();   
+    
+    let col_b = input.column(1).as_any().downcast_ref::<Int64Array>().unwrap();
+    // Perform a transformation  
     let negated_a = arrow::compute::negate(col_a).unwrap();
     let zero_b: PrimitiveArray<Int64Type> = unary(col_b, |x| 0);
-
+    
+    unsafe { drop((*input_result.ffi_schema).clone()) };
+    unsafe { drop((*input_result.ffi_array).clone()) };
+    
     let projected_schema = Schema::new(vec![
         Field::new("a", DataType::Int64, false),
         Field::new("b", DataType::Int64, false),
     ]);
-
+    // Build the transformed record batch
     let result = RecordBatch::try_new(
         Arc::new(projected_schema),
         vec![
@@ -37,39 +42,20 @@ pub extern "C" fn transform(ctx: u32) {
             Arc::new(zero_b),
         ],
     );
-    println!("transform result = {:?}", result);
+    // println!("transform result = {:?}", result);
 
-    // Convert the trabsformed record batch to ffi schema and array
+    // Convert the transformed record batch to ffi schema and array
     let transformed_record = result.unwrap();
     let struct_array: StructArray = transformed_record.into();
     let (out_array, out_schema) = struct_array.to_raw().unwrap();
     unsafe { println!("after transform schema ptr = {:?},, {:?}, array ptr = {:?},, {:?}", out_schema, *out_schema, out_array, *out_array); 
-        let a32 = &*out_array;
-    
-
-    // // let a32_buffers_array = to64(base, a32.buffers) as *const u32;
-    // let a64_buffers_array: () = (0..a32.n_buffers as usize)
-    //     .map(|i| {
-    //         let a32_buffer = unsafe { a32.buffers.add(i) };
-    //         unsafe { println!("n_buffers = {:?}", a32.n_buffers); }
-    //         let a32_buffer = unsafe { *a32_buffer };
-    //         // let a64_buffer = to64(base, a32_buffer);
-    //         // // mem::forget(a64_buffer);
-    //         unsafe { println!("buffer 32 = {:?}", a32_buffer); }
-    //         // a64_buffer
-    //     })
-    //     .collect();
     }
 
-
+    // Set the output
     ctx.out_schema = out_schema as u32;
     ctx.out_array = out_array as u32;
     // let out_record = unsafe { make_array_from_raw(out_array, out_schema) };
     // println!("wasm side out record = {:?}", out_record);
-
-
-    // ctx.in_array   
-
 }
 
 
