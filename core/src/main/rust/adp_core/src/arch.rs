@@ -127,6 +127,9 @@ pub fn release_exported_schema(_schema32: u32) {
         // deallocate the schema itself?
         
         (*schema).release = 0;
+        let schema_ptr32 = to32(base, schema as u64);
+        (*instance).deallocate_buffer(schema_ptr32, size_of::<FFI32_ArrowSchema>() as u32);
+
         println!("release func8");
     }
 }
@@ -146,7 +149,13 @@ impl FFI32_ArrowSchema {
         println!("gg size of FFI64_ArrowSchema = {:?}", size_of::<FFI64_ArrowSchema>());
         let allocated_offset = instance.allocate_buffer(size_of::<Self>() as u32);
         let s32 = to64(instance.allocator_base(), allocated_offset) as *mut FFI32_ArrowSchema;
+        println!("new ffi32 arrow schema");
         s32 as *mut Self
+    }
+
+    pub fn delete(instance: &CoreInstance, schema_ptr: u32) {
+        instance.deallocate_buffer(schema_ptr, size_of::<Self>() as u32);
+        println!("delete schema");
     }
 
     // Convert the given 64bit schema to 32bit schema
@@ -324,6 +333,9 @@ pub fn release_exported_array(_array32: u32) {
 
         
         (*array).release = 0;
+        let array_ptr32 = to32(base, array as u64);
+        // (*instance).deallocate_buffer(array_ptr32, 60);
+        (*instance).deallocate_buffer(array_ptr32, size_of::<FFI32_ArrowArray>() as u32);
         println!("array release func8");
     }
 }
@@ -336,6 +348,12 @@ impl FFI32_ArrowArray {
         let allocated_offset = instance.allocate_buffer(size_of::<Self>() as u32);
         let s32 = to64(instance.allocator_base(), allocated_offset) as *mut FFI32_ArrowArray;
         s32 as *mut Self
+    }
+
+    pub fn delete(instance: &CoreInstance, array_ptr: u32) {
+        instance.deallocate_buffer(array_ptr, 64);
+        // instance.deallocate_buffer(array_ptr, size_of::<Self>() as u32);
+        println!("delete array");
     }
 
     // Convert the given 64bit array to 32bit array
@@ -613,6 +631,7 @@ pub(crate) struct FFI64_ArrowArray_PrivateData {
     pub(crate) buffers_ptr: u64,
     pub(crate) buffers_size: u32,
     pub(crate) children_ptr: *mut *mut FFI64_ArrowArray,
+    pub(crate) children_size: u32,
     instance: *mut CoreInstance,
 }
 
@@ -635,7 +654,7 @@ pub fn release_exported_array64(_array64: u64) {
         // println!("inner = {:?}\nprivate data = {:?}", *inner, *private_data);
         // Call the release function of the 32bit (that releases the children)
         // let release32 = (*inner).release as *const _ as unsafe extern "C" fn(arg1: *mut FFI32_ArrowSchema);
-        println!("release array 64 release32 ptr = {:?}, inner ptr = {:?}", (*inner).release, inner);
+        println!("release array 64 release32 ptr = {:?}, inner ptr = {:?}", (*inner), inner);
         // call Wasm function to call the 32 release function?
         (*instance).release_array32(to32(base, inner as u64));
         // match release32 {
@@ -655,7 +674,9 @@ pub fn release_exported_array64(_array64: u64) {
                 // Step to the i-th entry of the array which stores the address of the i-th child
                 let child = children.add(i);
                 let child = unsafe { *child };
+                let child_to_release = child;
                 // Now we have the needed address, we can get the child
+                // let child = unsafe { Box::from_raw(child as *mut FFI64_ArrowArray) };
                 let child = unsafe { &mut *(child as *mut FFI64_ArrowArray) };
                 println!("release array func4, child = {:?}", child);
                 if child.release != None {
@@ -665,11 +686,14 @@ pub fn release_exported_array64(_array64: u64) {
                     release_exported_array64(0);
                     println!("release func6, child = {:?}", child);
                 }
+                let _child = Box::from_raw(child_to_release as *mut FFI64_ArrowArray);
             }
             // After traversing the children, we can release the array of the children
             // let children_array = (*private_data).children_ptr as *mut Vec<FFI64_ArrowSchema>;
-            let _children_box = Box::from_raw((*private_data).children_ptr);
+            // let _children_box = Box::from_raw((*private_data).children_ptr);
             // mem::drop((*private_data).children_ptr);
+            deallocate_buffer((*private_data).children_ptr as u64, (*private_data).children_size);
+
         }
         // Release the buffers array
         deallocate_buffer((*private_data).buffers_ptr, (*private_data).buffers_size);
@@ -699,6 +723,7 @@ impl FFI64_ArrowArray {
         self.n_buffers = a32.n_buffers;
         self.n_children = a32.n_children;
         let mut buffers_size = 0;
+        let mut children_size = 0;
 
         // Allocate a new array to store the buffers addresses
         if a32.n_buffers > 0 {
@@ -730,37 +755,69 @@ impl FFI64_ArrowArray {
 
         // Recursively convert the children (the sub-array) from 32 to 64
         if self.n_children > 0 {
+            // Sol
             let a32_children_array_ptr = to64(base, a32.children) as *const u32;
-            let a64_children_array: Vec<FFI64_ArrowArray> = (0..a32.n_children as usize)
-                .map(|i| {
-                    let a32_child_item = unsafe { a32_children_array_ptr.add(i) };
-                    let a32_child_item = unsafe { *a32_child_item };
-                    let a32_child = to64(base, a32_child_item);
-                    let a32_child = unsafe { &mut*(a32_child as *mut FFI32_ArrowArray) };
-                    let mut a64_child = FFI64_ArrowArray::new();
-                    a64_child.from(instance, a32_child);
-                    println!("a64 child = {:?}", a64_child);
-                    a64_child
-                })
-                .collect();
-            let mut children_ptr = a64_children_array
-                .into_iter()
-                .map(Box::new)
-                .map(Box::into_raw)
-                .collect::<Box<_>>();
-            self.children = children_ptr.as_mut_ptr();
-            mem::forget(children_ptr);
+            children_size = (self.n_children * 8) as u32;
+            let mut a64_children_array = allocate_buffer(children_size) as *mut u64;
+            // let mut a64_buffers_array = to64(base, instance.allocate_buffer(buffers_size)) as *mut u64;
+            // unsafe { println!("from 32 to 64 a64 buffers array"); }
+            // let a64_buffers_ptr = &a64_buffers_array as *const _ as *mut u64;
+            for i in 0..a32.n_children as usize {
+                let a32_child_item = unsafe { a32_children_array_ptr.add(i) };
+                let a32_child_item = unsafe { *a32_child_item };
+                let a32_child = to64(base, a32_child_item);
+                let a32_child = unsafe { &mut*(a32_child as *mut FFI32_ArrowArray) };
+                println!("**** a32 child = {:?}", a32_child);
+                let mut a64_child = FFI64_ArrowArray::new();
+                a64_child.from(instance, a32_child);
+                unsafe { println!("from 32 to 64 a64 loop {:?}", i); }
+                let a64_child_item = unsafe{ a64_children_array.add(i) };
+                let a64_child_ptr = Box::into_raw(Box::new(a64_child)) as *const _ as u64;
+                unsafe { *a64_child_item = a64_child_ptr; }
+                // unsafe { *a64_child_item = &a64_child as *const _ as u64; }
+                
+                
+            }
+
+
+            // self.buffers = a64_buffers_ptr as u64;
+            self.children = a64_children_array as u64 as *mut *mut FFI64_ArrowArray;
+
+
+            // Sol 1
+            // let a32_children_array_ptr = to64(base, a32.children) as *const u32;
+            // let a64_children_array: Vec<FFI64_ArrowArray> = (0..a32.n_children as usize)
+            //     .map(|i| {
+            //         let a32_child_item = unsafe { a32_children_array_ptr.add(i) };
+            //         let a32_child_item = unsafe { *a32_child_item };
+            //         let a32_child = to64(base, a32_child_item);
+            //         let a32_child = unsafe { &mut*(a32_child as *mut FFI32_ArrowArray) };
+            //         println!("**** a32 child = {:?}", a32_child);
+            //         let mut a64_child = FFI64_ArrowArray::new();
+            //         a64_child.from(instance, a32_child);
+            //         println!("a64 child = {:?}", a64_child);
+            //         a64_child
+            //     })
+            //     .collect();
+            // let mut children_ptr = a64_children_array
+            //     .into_iter()
+            //     .map(Box::new)
+            //     .map(Box::into_raw)
+            //     .collect::<Box<_>>();
+            // self.children = children_ptr.as_mut_ptr();
+            // mem::forget(children_ptr);
         }
         unsafe { println!("from 32 to 64 a64 after children"); }
 
         // Dictionary
         // if !self.dictionary.is_null() {}
-
+        // println!("**** a32 inner = {:?}", (*a32));
         let private_data = FFI64_ArrowArray_PrivateData {
             inner: a32,
             buffers_ptr: self.buffers,
             buffers_size,
             children_ptr: self.children,
+            children_size,
             instance : instance as *const _ as *mut CoreInstance,
         };
 

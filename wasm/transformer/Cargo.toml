@@ -10,6 +10,7 @@ crate-type = ["cdylib"]
 wee_alloc = "0.4.5"
 arrow = { path = "/home/mohammadtn/FFI32/arrow-rs/arrow", default-features = false, features = ["prettyprint"]}
 dhat = "0.2.4"
+wasm-tracing-allocator = "0.1.0"
 
 #[target.'cfg(not(target_env = "msvc"))'.dependencies]
 #jemallocator = "0.3.2"

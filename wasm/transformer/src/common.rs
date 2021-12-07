@@ -14,6 +14,7 @@ use arrow::record_batch::RecordBatch;
 
 use crate::array::{FFI32_ArrowArray, FFI64_ArrowArray};
 use crate::schema::{FFI32_ArrowSchema, FFI64_ArrowSchema};
+use crate::allocator::{GLOBAL_ALLOC_SIZE, GLOBAL_DEALLOC_SIZE};
 
 
 extern "C" {
@@ -164,9 +165,10 @@ impl TransformContext32 {
             // Build the array from c-data interface
             let result = unsafe { make_array_from_raw(array, schema) };
             
-            println!("after release");
+            // println!("after release");
             let res = Result {
                 array_ref: result.ok(),
+                // array_ref: None,
                 ffi_schema: schema,
                 ffi_array: array,
             };
@@ -222,6 +224,7 @@ pub unsafe extern "C" fn release_schema32(schema32: u32) {
 pub unsafe extern "C" fn release_array32(array32: u32) {
     println!("Wasm release 32, array32 ptr = {:?}", array32);
     let array_ptr = array32 as *mut FFI_ArrowArray;
+    println!("**** Wasm release 32, array32 = {:?}", *array_ptr);
     // let array_helper_ptr = array32 as *mut FFI_ArrowArray_helper;
     // let array_helper = unsafe { &*array_helper_ptr };
     // println!("Wasm release 32 array = {:?}", array_helper);
@@ -230,4 +233,14 @@ pub unsafe extern "C" fn release_array32(array32: u32) {
     //     Some(release) => unsafe { release(array_ptr as u32) },
     // };
     unsafe { drop((*array_ptr).clone()) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn allocated_size() -> u64 {
+    GLOBAL_ALLOC_SIZE
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn released_size() -> u64 {
+    GLOBAL_DEALLOC_SIZE
 }

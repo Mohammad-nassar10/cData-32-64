@@ -15,6 +15,9 @@ wasmer = "2.0"
 wasmer-wasi = "2.0"
 arrow = { path = "/home/mohammadtn/FFI32/arrow-rs/arrow", default-features = false, features = ["prettyprint"]}
 dhat = "0.2.4"
+wee_alloc = "0.4.5"
+wasm-tracing-allocator = "0.1.0"
+
 
 [profile.release]
 debug = 1

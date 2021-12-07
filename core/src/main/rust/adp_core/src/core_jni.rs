@@ -174,3 +174,23 @@ pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_wasmDealloc(
     let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
     instance.deallocate_buffer(offset.try_into().unwrap(), size.try_into().unwrap());
 }
+
+#[no_mangle]
+pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_allocatedSize(
+    _jre: JNIEnv,
+    _object: JObject,
+    instance_ptr: jptr,
+) {
+    let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
+    instance.allocated_size();
+}
+
+#[no_mangle]
+pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_releasedSize(
+    _jre: JNIEnv,
+    _object: JObject,
+    instance_ptr: jptr,
+) {
+    let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
+    instance.released_size();
+}

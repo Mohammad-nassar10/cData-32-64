@@ -31,6 +31,8 @@ pub struct CoreInstance {
     pub release_schema32_func: NativeFunc<u32, ()>,
     // array32 ptr -> void
     pub release_array32_func: NativeFunc<u32, ()>,
+    pub allocated_size: NativeFunc<(), u64>,
+    pub released_size: NativeFunc<(), u64>,
 }
 
 #[repr(C)]
@@ -104,6 +106,14 @@ impl CoreInstance {
             .exports
             .get_native_function::<u32, ()>("release_array32")
             .unwrap();
+        let allocated_size = instance
+            .exports
+            .get_native_function::<(), (u64)>("allocated_size")
+            .unwrap();
+        let released_size = instance
+            .exports
+            .get_native_function::<(), (u64)>("released_size")
+            .unwrap();
 
         Ok(Self {
             instance,
@@ -113,7 +123,9 @@ impl CoreInstance {
             transform_func,
             finalize_tansform_func, 
             release_schema32_func,
-            release_array32_func
+            release_array32_func,
+            allocated_size,
+            released_size
         })
     }
 
@@ -175,6 +187,7 @@ impl CoreInstance {
         // Call the Wasm function that performs the transformation
         self.transform_func.call(context).unwrap();
 
+
         // Convert back from 32 to 64 after transformation
         let out_schema32 = (ctx.out_schema as u64 + ctx.base) as *mut FFI32_ArrowSchema;
         let out_array32 = (ctx.out_array as u64 + ctx.base) as *mut FFI32_ArrowArray;
@@ -204,16 +217,18 @@ impl CoreInstance {
         };
         // let test_schema = result.out_schema as *mut FFI_ArrowSchema;
         // let test_array = &out_array64 as *const _ as u64 as *mut FFI_ArrowArray;
-        unsafe { println!("rust outschema = {:?}, array = {:?}", *(result.out_schema as *mut FFI64_ArrowSchema), *(result.out_array as *mut FFI64_ArrowArray));
+        // unsafe { println!("rust outschema = {:?}, array = {:?}", *(result.out_schema as *mut FFI64_ArrowSchema), *(result.out_array as *mut FFI64_ArrowArray));
             // let array = ffi::ArrowArray::try_from_raw(test_array, test_schema).unwrap();
             // // let buf = create_buffer(Arc::new((*test_array).clone()), &*(result.out_array as *mut FFI64_ArrowArray), 0, 100);
             // println!("core.rs create buf = {:?}", array.buffers());
-        }
+        // }
         // let out_record = unsafe { make_array_from_raw(test_array, test_schema) };
         // unsafe { println!("test schema = {:?}, array = {:?}\nrecord = {:?}", *test_schema, *test_array, out_record); }
-        unsafe { println!("rust res schema ptr = {:?}, array = {:?}", result.out_schema, result.out_array); }
+        // unsafe { println!("rust res schema ptr = {:?}, array = {:?}", result.out_schema, result.out_array); }
         
-        
+                // Delete allocated schema32 and array 32
+                // FFI32_ArrowSchema::delete(&self, to32(base, schema32 as u64));
+                // FFI32_ArrowArray::delete(&self, to32(base, array32 as u64));
         // unsafe { mem::forget(*(result.out_schema as *mut FFI64_ArrowSchema)); }
         // mem::forget(result.out_array);
         let res = Pointer::new(result);
@@ -228,8 +243,9 @@ impl CoreInstance {
     }
 
     pub fn finalize_tansform(&self, context: u32) {
-        release_exported_schema64(0);
-        release_exported_array64(0);
+        // release_exported_schema64(0);
+        // release_exported_array64(0);
+        // self.deallocate_buffer(10000, 100000);
         self.finalize_tansform_func.call(context).unwrap();
     }
 
@@ -239,5 +255,13 @@ impl CoreInstance {
 
     pub fn release_array32(&self, array32: u32) {
         self.release_array32_func.call(array32).unwrap();
+    }
+
+    pub fn allocated_size(&self) {
+        self.allocated_size.call().unwrap();
+    }
+
+    pub fn released_size(&self) {
+        self.released_size.call().unwrap();
     }
 }

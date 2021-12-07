@@ -100,11 +100,14 @@ public class WasmTransformer implements Transformer {
         transformedRoot = Data.importVectorSchemaRoot(allocator, outArray, outSchema, null);
         // VectorSchemaRoot outVsr = Data.importVectorSchemaRoot(allocator, outArray, outSchema, null);
         // System.out.println("java out vsr " + transformedRoot.contentToTSVString());
-        
+        // transformedRoot = originalRoot;
 
         System.out.println("finish");
         JniWrapper.get().finish(instancePtr, context);
         this.transformedRoot.close();
+        long allocatedSize = JniWrapper.get().allocatedSize(instancePtr);
+        long releasedSize = JniWrapper.get().releasedSize(instancePtr);
+        System.out.println("allocated size = " + allocatedSize + " released size = " + releasedSize);
         System.out.println("next completed");
     }
 
@@ -113,6 +116,8 @@ public class WasmTransformer implements Transformer {
             if (this.transformedRoot != null) {
                 this.transformedRoot.close();
             }
+            // this.originalRoot.close();
+
             this.closed = true;
         }
     }
