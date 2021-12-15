@@ -251,29 +251,29 @@ pub unsafe extern "C" fn finalize_tansform(ctx: u32, schema_ptr: u32, array_ptr:
 pub unsafe extern "C" fn release_schema32(schema32: u32) {
     println!("Wasm release 32, schema32 ptr = {:?}", schema32);
     let schema_ptr = schema32 as *mut FFI_ArrowSchema;
-    // let schema_helper_ptr = schema32 as *mut FFI_ArrowSchema_helper;
-    // let schema_helper = unsafe { &*schema_helper_ptr };
-    // println!("Wasm release 32 schema = {:?}", schema_helper);
-    // match schema_helper.release {
-    //     None => (),
-    //     Some(release) => unsafe { release(schema_ptr as u32) },
-    // };
-    unsafe { drop((*schema_ptr).clone()) };
+    let schema_helper_ptr = schema32 as *mut FFI_ArrowSchema_helper;
+    let schema_helper = unsafe { &*schema_helper_ptr };
+    println!("Wasm release 32 schema = {:?}", schema_helper);
+    match schema_helper.release {
+        None => (),
+        Some(release) => unsafe { release(schema_ptr as u32) },
+    };
+    // unsafe { drop((*schema_ptr).clone()) };
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn release_array32(array32: u32) {
     println!("Wasm release 32, array32 ptr = {:?}", array32);
     let array_ptr = array32 as *mut FFI_ArrowArray;
-    println!("**** Wasm release 32, array32 = {:?}", *array_ptr);
-    // let array_helper_ptr = array32 as *mut FFI_ArrowArray_helper;
-    // let array_helper = unsafe { &*array_helper_ptr };
-    // println!("Wasm release 32 array = {:?}", array_helper);
-    // match array_helper.release {
-    //     None => (),
-    //     Some(release) => unsafe { release(array_ptr as u32) },
-    // };
-    unsafe { drop((*array_ptr).clone()) };
+    // println!("**** Wasm release 32, array32 = {:?}", *array_ptr);
+    let array_helper_ptr = array32 as *mut FFI_ArrowArray_helper;
+    let array_helper = unsafe { &*array_helper_ptr };
+    println!("Wasm release 32 array = {:?}", array_helper);
+    match array_helper.release {
+        None => (),
+        Some(release) => unsafe { release(array_ptr as u32) },
+    };
+    // unsafe { drop((*array_ptr).clone()) };
 }
 
 #[no_mangle]
