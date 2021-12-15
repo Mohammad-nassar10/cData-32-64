@@ -19,6 +19,7 @@ import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
+import org.checkerframework.checker.units.qual.s;
 
 import io.fybrik.adp.core.transformer.Transformer;
 
@@ -31,7 +32,7 @@ public class ExampleProducer extends NoOpFlightProducer implements AutoCloseable
     private final Location location;
     private final BufferAllocator allocator;
     private final Transformer transformer;
-    private final int RecordsPerBatch = 1024*1024;
+    private final int RecordsPerBatch = 1024*10241;
     private final VectorSchemaRoot constVectorSchemaRoot;
     private boolean isNonBlocking = false;
 
@@ -65,7 +66,6 @@ public class ExampleProducer extends NoOpFlightProducer implements AutoCloseable
                 List<Field> fields = Arrays.asList(a.getField(), b.getField(), c.getField(), d.getField());
                 List<FieldVector> vectors = Arrays.asList(a, b, c, d);
                 VectorSchemaRoot vsr = new VectorSchemaRoot(fields, vectors);
-                // System.out.println("vsr producer = " + vsr.contentToTSVString());
                 return vsr;
             }
 
@@ -81,7 +81,7 @@ public class ExampleProducer extends NoOpFlightProducer implements AutoCloseable
         Runnable loadData = () -> {
             listener.setUseZeroCopy(true);
             VectorSchemaRoot transformedRoot = null;
-            for(int i = 0; i < 5000; ++i) {
+            for(int i = 0; i < 10000; ++i) {
                 System.out.println(i);
                 // System.out.println("init = " + this.transformer.originalRoot().contentToTSVString());
                 this.transformer.next();

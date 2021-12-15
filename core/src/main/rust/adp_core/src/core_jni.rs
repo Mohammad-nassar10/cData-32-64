@@ -60,9 +60,11 @@ pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_finish(
     _object: JObject,
     instance_ptr: jptr,
     context: jlong,
+    schema_ptr: jlong,
+    array_ptr: jlong
 ) {
     let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
-    instance.finalize_tansform(context.try_into().unwrap());
+    instance.finalize_tansform(context.try_into().unwrap(), schema_ptr.try_into().unwrap(), array_ptr.try_into().unwrap());
 }
 
 #[no_mangle]

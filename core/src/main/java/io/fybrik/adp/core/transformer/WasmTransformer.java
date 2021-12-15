@@ -103,11 +103,11 @@ public class WasmTransformer implements Transformer {
         // transformedRoot = originalRoot;
 
         System.out.println("finish");
-        JniWrapper.get().finish(instancePtr, context);
+        JniWrapper.get().finish(instancePtr, context, schemaPtr, arrayPtr);
         this.transformedRoot.close();
-        long allocatedSize = JniWrapper.get().allocatedSize(instancePtr);
-        long releasedSize = JniWrapper.get().releasedSize(instancePtr);
-        System.out.println("allocated size = " + allocatedSize + " released size = " + releasedSize);
+        // long allocatedSize = JniWrapper.get().allocatedSize(instancePtr);
+        // long releasedSize = JniWrapper.get().releasedSize(instancePtr);
+        // System.out.println("allocated size = " + allocatedSize + " released size = " + releasedSize);
         System.out.println("next completed");
     }
 

@@ -22,7 +22,7 @@ public class JniWrapper {
 
   public native long transform(long instancePtr, long contextPtr);
 
-  public native void finish(long instancePtr, long contextPtr);
+  public native void finish(long instancePtr, long contextPtr, long schemaPtr, long arrayPtr);
 
   public native long getInputSchema(long instancePtr, long contextPtr);
 

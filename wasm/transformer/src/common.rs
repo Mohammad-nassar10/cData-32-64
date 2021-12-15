@@ -59,8 +59,8 @@ pub(crate) struct TransformContext32 {
 #[derive(Debug)]
 pub(crate) struct Result {
     pub(crate) array_ref: Option<ArrayRef>,
-    pub(crate) ffi_schema: *mut FFI_ArrowSchema,
-    pub(crate) ffi_array: *mut FFI_ArrowArray,
+    pub(crate) ffi_schema: u32,
+    pub(crate) ffi_array: u32,
 }
 
 #[repr(C)]
@@ -78,7 +78,7 @@ pub struct FFI_ArrowSchema_helper {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct FFI_ArrowArray_helper {
     pub(crate) length: i64,
     pub(crate) null_count: i64,
@@ -149,28 +149,34 @@ impl TransformContext32 {
         // println!("gg size of FFI64_ArrowSchema wasm = {:?}", size_of::<FFI64_ArrowSchema>());
         // Get the schema and change its release function to the imported release function
         // Due to the fact that the release field is private, we use a helper struct which has the same fields as FFI_ArrowSchema
-        let mut schema = unsafe { ((self.in_schema as *mut FFI_ArrowSchema_helper)) };
-        println!("input common = {:?}", schema);
+        let mut schema_helper = (self.in_schema as *mut FFI_ArrowSchema_helper);
+        println!("input common = {:?}", schema_helper);
         unsafe {
-            (*schema).release = Some(release_func);
-            let fun_ptr = release_func as *const () as u64;
-            let schema = schema as *const _ as *mut FFI_ArrowSchema;
-            unsafe { println!("input common2 = {:?}", (*schema)); }
+            (*schema_helper).release = Some(release_func);
+            // let fun_ptr = release_func as *const () as u64;
+            let schema = schema_helper as *const _ as *mut FFI_ArrowSchema;
+            println!("input common2 = {:?}", (*schema));
 
             // The same for the array, to change the release field
-            let mut array = unsafe { ((self.in_array as *mut FFI_ArrowArray_helper)) };
-            (*array).release = Some(release_array_func);
-            let array = array as *const _ as *mut FFI_ArrowArray;
+            let mut array_helper = self.in_array as *mut FFI_ArrowArray_helper;
+            (*array_helper).release = Some(release_array_func);
+            let array = array_helper as *const _ as *mut FFI_ArrowArray;
             unsafe { println!("input common3 = {:?}", (*array)); }
+
+        // let s = *schema_helper;
+        // let a = *array_helper;
+        // let schema = Arc::into_raw(Arc::new(s)) as *const FFI_ArrowSchema;
+        // let array = Arc::into_raw(Arc::new(a)) as *const FFI_ArrowArray;
+
             // Build the array from c-data interface
             let result = unsafe { make_array_from_raw(array, schema) };
-            
-            // println!("after release");
+            let result = result.ok();
+            println!("after make array, {:?}", result);
             let res = Result {
-                array_ref: result.ok(),
+                array_ref: result,
                 // array_ref: None,
-                ffi_schema: schema,
-                ffi_array: array,
+                ffi_schema: schema as u32,
+                ffi_array: array as u32,
             };
             res
         }
@@ -188,22 +194,57 @@ impl TransformContext32 {
 
 #[no_mangle]
 pub extern "C" fn prepare_transform(base: u64) -> u32 {
+    println!("prepare transform 1");
+    let in_schema = Arc::into_raw(Arc::new(FFI64_ArrowSchema::empty())) as *mut FFI64_ArrowSchema;
+    println!("prepare transform 2");
+    let in_array = Arc::into_raw(Arc::new(FFI64_ArrowArray::empty())) as *mut FFI64_ArrowArray;
+    println!("prepare transform 3");
     let ctx = TransformContext {
         base,
-        in_schema: Arc::into_raw(Arc::new(FFI64_ArrowSchema::empty())) as *mut FFI64_ArrowSchema,
-        in_array: Arc::into_raw(Arc::new(FFI64_ArrowArray::empty())) as *mut FFI64_ArrowArray,
+        in_schema,
+        in_array,
         out_schema: std::ptr::null_mut(),
         out_array: std::ptr::null_mut(),
     };
+    println!("prepare transform 4");
     Box::into_raw(Box::new(ctx)) as u32
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn finalize_tansform(ctx: u32) {
+pub unsafe extern "C" fn new_ffi_schema() -> u32 {
+    // let new_schema = Arc::into_raw(Arc::new(FFI_ArrowSchema::empty()));
+    // Arc::from_raw(new_schema as *mut FFI_ArrowSchema);
+    let new_schema = Arc::into_raw(Arc::new(FFI_ArrowSchema::empty()));
+    println!("new ffi schema = {:?}", new_schema);
+    new_schema as u32
+}
+
+#[no_mangle]
+pub extern "C" fn new_ffi_array() -> u32 {
+    let new_array = Arc::into_raw(Arc::new(FFI_ArrowArray::empty()));
+    new_array as u32
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn delete_ffi_schema(schema: u32) {
+    println!("delete ffi schema = {:?}, {:?}", schema, *(schema as *mut FFI_ArrowSchema));
+    Arc::from_raw(schema as *mut FFI_ArrowSchema);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn delete_ffi_array(array: u32) {
+    Arc::from_raw(array as *mut FFI_ArrowArray);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn finalize_tansform(ctx: u32, schema_ptr: u32, array_ptr: u32) {
     let ctx = ctx as *mut TransformContext;
     let ctx = Box::from_raw(ctx);
-    Arc::from_raw(ctx.in_schema);
-    Arc::from_raw(ctx.in_array);
+    // println!("finalize, schema = {:?}, {:?}", ctx.in_schema, *(ctx.in_schema as *mut FFI_ArrowSchema));
+    // Arc::from_raw(ctx.in_schema as *mut FFI_ArrowSchema);
+    // Arc::from_raw(ctx.in_array as *mut FFI32_ArrowArray);
+    Arc::from_raw(schema_ptr as *mut FFI64_ArrowSchema);
+    Arc::from_raw(array_ptr as *mut FFI64_ArrowArray);
 }
 
 #[no_mangle]

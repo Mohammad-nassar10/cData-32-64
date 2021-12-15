@@ -11,7 +11,7 @@ use arrow::array::{Array, make_array_from_raw};
 use crate::arch::{FFI32_ArrowArray, FFI32_ArrowSchema, FFI64_ArrowArray, FFI64_ArrowSchema, GLOBAL_ENV, release_exported_array, release_exported_schema, release_exported_schema64, release_exported_array64, to32, to64};
 use crate::types::{Pointer, jptr};
 
-use dhat::Dhat;
+// use dhat::Dhat;
 
 #[repr(C)]
 #[derive(Clone)]
@@ -26,13 +26,17 @@ pub struct CoreInstance {
     // context ptr -> void
     pub transform_func: NativeFunc<u32, ()>,
     // context ptr -> void
-    pub finalize_tansform_func: NativeFunc<u32, ()>,
+    pub finalize_tansform_func: NativeFunc<(u32, u32, u32), ()>,
     // schema32 ptr -> void
     pub release_schema32_func: NativeFunc<u32, ()>,
     // array32 ptr -> void
     pub release_array32_func: NativeFunc<u32, ()>,
     pub allocated_size: NativeFunc<(), u64>,
     pub released_size: NativeFunc<(), u64>,
+    pub new_ffi_schema: NativeFunc<(), u32>,
+    pub new_ffi_array: NativeFunc<(), u32>,
+    pub delete_ffi_schema: NativeFunc<u32, ()>,
+    pub delete_ffi_array: NativeFunc<u32, ()>,
 }
 
 #[repr(C)]
@@ -94,7 +98,7 @@ impl CoreInstance {
 
         let finalize_tansform_func = instance
             .exports
-            .get_native_function::<u32, ()>("finalize_tansform")
+            .get_native_function::<(u32, u32, u32), ()>("finalize_tansform")
             .unwrap();
 
         let release_schema32_func = instance
@@ -108,11 +112,27 @@ impl CoreInstance {
             .unwrap();
         let allocated_size = instance
             .exports
-            .get_native_function::<(), (u64)>("allocated_size")
+            .get_native_function::<(), u64>("allocated_size")
             .unwrap();
         let released_size = instance
             .exports
-            .get_native_function::<(), (u64)>("released_size")
+            .get_native_function::<(), u64>("released_size")
+            .unwrap();
+        let new_ffi_schema = instance
+            .exports
+            .get_native_function::<(), u32>("new_ffi_schema")
+            .unwrap();
+        let new_ffi_array = instance
+            .exports
+            .get_native_function::<(), u32>("new_ffi_array")
+            .unwrap();
+        let delete_ffi_schema = instance
+            .exports
+            .get_native_function::<u32, ()>("delete_ffi_schema")
+            .unwrap();
+        let delete_ffi_array = instance
+            .exports
+            .get_native_function::<u32, ()>("delete_ffi_array")
             .unwrap();
 
         Ok(Self {
@@ -125,7 +145,11 @@ impl CoreInstance {
             release_schema32_func,
             release_array32_func,
             allocated_size,
-            released_size
+            released_size,
+            new_ffi_schema,
+            new_ffi_array,
+            delete_ffi_schema,
+            delete_ffi_array
         })
     }
 
@@ -164,8 +188,11 @@ impl CoreInstance {
         let in_schema64 = (ctx.in_schema as u64 + ctx.base) as *mut FFI64_ArrowSchema;
         let in_array64 = (ctx.in_array as u64 + ctx.base) as *mut FFI64_ArrowArray;
         // Allocate new, empty arrow and schema of 32 bit
-        let schema32 = FFI32_ArrowSchema::new(&self);
-        let array32 = FFI32_ArrowArray::new(&self);
+        // let schema32 = FFI32_ArrowSchema::new(&self);
+        // let array32 = FFI32_ArrowArray::new(&self);
+        let schema32 = FFI32_ArrowSchema::new_root(&self);
+        let array32 = FFI32_ArrowArray::new_root(&self);
+        println!("schema 32 = {:?}, array 32 = {:?}", schema32, array32);
         unsafe { 
             // Convert the 64 bit schema to a 32 bit schema
             (*schema32).from(self, &mut *in_schema64);
@@ -178,15 +205,19 @@ impl CoreInstance {
         ctx.in_schema = to32(ctx.base, schema32 as u64);
         ctx.in_array = to32(ctx.base, array32 as u64);
         // Set a global variable with the schema and array in order to release them afterwards
-        unsafe { GLOBAL_ENV.schema = schema32 as u64 };
-        unsafe { GLOBAL_ENV.array = array32 as u64 };
+        unsafe { GLOBAL_ENV.schema32 = schema32 as u64 };
+        unsafe { GLOBAL_ENV.array32 = array32 as u64 };
+        println!("schema 32 = {:?}, array 32 = {:?}", schema32, array32);
 
         // let result = unsafe { make_array_from_raw(array, schema) };
         // println!("result = {:?}", result);
 
         // Call the Wasm function that performs the transformation
         self.transform_func.call(context).unwrap();
+        println!("schema 32 = {:?}, array 32 = {:?}", schema32, array32);
 
+        // self.delete_ffi_schema(to32(base, schema32 as u64));
+        // self.delete_ffi_array(to32(base, array32 as u64));
 
         // Convert back from 32 to 64 after transformation
         let out_schema32 = (ctx.out_schema as u64 + ctx.base) as *mut FFI32_ArrowSchema;
@@ -208,8 +239,8 @@ impl CoreInstance {
         // Set a global variable with the schema and array in order to release them afterwards
         let out_schema64_ptr: jptr = Pointer::new(out_schema64).into();
         let out_array64_ptr: jptr = Pointer::new(out_array64).into();
-        unsafe { GLOBAL_ENV.schema = out_schema64_ptr as u64 };
-        unsafe { GLOBAL_ENV.array = out_array64_ptr as u64 };
+        unsafe { GLOBAL_ENV.schema64 = out_schema64_ptr as u64 };
+        unsafe { GLOBAL_ENV.array64 = out_array64_ptr as u64 };
         // The result is pointers to the transformed schema and array
         let result = FFI_TransformOutput {
             out_schema: Pointer::new(out_schema64).into(),
@@ -242,11 +273,11 @@ impl CoreInstance {
         // res.into()
     }
 
-    pub fn finalize_tansform(&self, context: u32) {
-        // release_exported_schema64(0);
-        // release_exported_array64(0);
+    pub fn finalize_tansform(&self, context: u32, schema_ptr: u32, array_ptr: u32) {
+        release_exported_schema64(0);
+        release_exported_array64(0);
         // self.deallocate_buffer(10000, 100000);
-        self.finalize_tansform_func.call(context).unwrap();
+        self.finalize_tansform_func.call(context, schema_ptr, array_ptr).unwrap();
     }
 
     pub fn release_schema32(&self, schema32: u32) {
@@ -263,5 +294,21 @@ impl CoreInstance {
 
     pub fn released_size(&self) {
         self.released_size.call().unwrap();
+    }
+
+    pub fn new_ffi_schema(&self) -> u32 {
+        self.new_ffi_schema.call().unwrap()
+    }
+
+    pub fn new_ffi_array(&self) -> u32 {
+        self.new_ffi_array.call().unwrap()
+    }
+
+    pub fn delete_ffi_schema(&self, schema: u32) {
+        self.delete_ffi_schema.call(schema).unwrap()
+    }
+
+    pub fn delete_ffi_array(&self, array: u32) {
+        self.delete_ffi_array.call(array).unwrap()
     }
 }

@@ -61,11 +61,13 @@ pub unsafe fn deallocate_buffer(ptr: u64, size: u32) {
 // Global variable to use in release callback
 pub(crate) struct GlobalEnv {
     pub(crate) base_mem: u64,
-    pub(crate) schema: u64,
-    pub(crate) array: u64,
+    pub(crate) schema32: u64,
+    pub(crate) array32: u64,
+    pub(crate) schema64: u64,
+    pub(crate) array64: u64,
 }
 
-pub(crate) static mut GLOBAL_ENV: GlobalEnv = GlobalEnv{base_mem : 0, schema: 0, array: 0};
+pub(crate) static mut GLOBAL_ENV: GlobalEnv = GlobalEnv{base_mem : 0, schema32: 0, array32: 0, schema64: 0, array64: 0};
 
 
 // Release function for schema, it is imported and will be called from Wasm side
@@ -76,7 +78,7 @@ pub fn release_exported_schema(_schema32: u32) {
     let base;
     let global_schema;
     unsafe { base = GLOBAL_ENV.base_mem; };
-    unsafe { global_schema = GLOBAL_ENV.schema; };
+    unsafe { global_schema = GLOBAL_ENV.schema32; };
     // check if the parameter is equal to the global
     unsafe{
         // Get the schema and the private data 
@@ -112,9 +114,11 @@ pub fn release_exported_schema(_schema32: u32) {
                 println!("release func4, child = {:?}", child);
                 if child.release != 0 {
                     // Use this function to release the child also, we need to change the global variable to the child
-                    GLOBAL_ENV.schema = child as *const _ as u64;
+                    GLOBAL_ENV.schema32 = child as *const _ as u64;
                     // The value of the parameter is not used
                     release_exported_schema(0);
+                    (*instance).deallocate_buffer(to32(base, child as *const _ as u64), size_of::<FFI32_ArrowSchema>() as u32);
+
                     println!("release func6, child = {:?}", child);
                 }
             }
@@ -128,7 +132,7 @@ pub fn release_exported_schema(_schema32: u32) {
         
         (*schema).release = 0;
         let schema_ptr32 = to32(base, schema as u64);
-        (*instance).deallocate_buffer(schema_ptr32, size_of::<FFI32_ArrowSchema>() as u32);
+        // (*instance).deallocate_buffer(schema_ptr32, size_of::<FFI32_ArrowSchema>() as u32);
 
         println!("release func8");
     }
@@ -149,6 +153,15 @@ impl FFI32_ArrowSchema {
         println!("gg size of FFI64_ArrowSchema = {:?}", size_of::<FFI64_ArrowSchema>());
         let allocated_offset = instance.allocate_buffer(size_of::<Self>() as u32);
         let s32 = to64(instance.allocator_base(), allocated_offset) as *mut FFI32_ArrowSchema;
+        println!("new ffi32 arrow schema");
+        s32 as *mut Self
+    }
+
+    pub fn new_root(instance: &CoreInstance) -> *mut Self {
+        println!("gg size of FFI64_ArrowSchema = {:?}", size_of::<FFI64_ArrowSchema>());
+        // let allocated_offset = instance.allocate_buffer(size_of::<Self>() as u32);
+        let s32 = instance.new_ffi_schema();
+        let s32 = to64(instance.allocator_base(), s32);
         println!("new ffi32 arrow schema");
         s32 as *mut Self
     }
@@ -198,6 +211,7 @@ impl FFI32_ArrowSchema {
                 // The FFI64_ArrowSchema of the i-th child 
                 let s64_child = unsafe { &mut *(s64_child_item as *mut FFI64_ArrowSchema) };
                 // Allocate the child's struct
+                // let s32_child = FFI32_ArrowSchema::new_root(instance);
                 let s32_child = FFI32_ArrowSchema::new(instance);
                 unsafe {
                     // Fill the new child with s64_child
@@ -217,7 +231,8 @@ impl FFI32_ArrowSchema {
         println!("pointer to function = {:?}", fun_ptr);
         // The release callback is set in the WASM module
         // Set a value different than None (but it is not used)
-        self.release = fun_ptr as u32;
+        // self.release = fun_ptr as u32;
+        self.release = 0;
     }
 }
 
@@ -281,15 +296,16 @@ pub(crate) struct FFI32_ArrowArray_PrivateData {
 // For security reasons it is better to use the array as we stored it in the 
 // global variable and not to rely on the parameter that the function got
 pub fn release_exported_array(_array32: u32) {
-    println!("release array func");
+    println!("release array func 32");
     let base;
     let global_array;
     unsafe { base = GLOBAL_ENV.base_mem; };
-    unsafe { global_array = GLOBAL_ENV.array; };
+    unsafe { global_array = GLOBAL_ENV.array32; };
 
     unsafe{
         // Get the arrow array and its private data
         let array = global_array as *mut FFI32_ArrowArray;
+        println!("release array 32 array = {:?}, {:?}", array, *array);
         let private_data = to64(base, (*array).private_data) as *mut FFI32_ArrowArray_PrivateData;
         let mut inner = (*private_data).inner;
         // release the 64 bit (this will release the 64 children also)
@@ -315,8 +331,9 @@ pub fn release_exported_array(_array32: u32) {
                 if child.release != 0 {
                     // Use this function to release the child 
                     // we need to change the global variable to the child
-                    GLOBAL_ENV.array = child as *const _ as u64;
+                    GLOBAL_ENV.array32 = child as *const _ as u64;
                     release_exported_array(0);
+                    (*instance).deallocate_buffer(to32(base, child as *const _ as u64), size_of::<FFI32_ArrowArray>() as u32);
                     // println!("array release func6, child = {:?}", child);
                 }
             }
@@ -335,7 +352,7 @@ pub fn release_exported_array(_array32: u32) {
         (*array).release = 0;
         let array_ptr32 = to32(base, array as u64);
         // (*instance).deallocate_buffer(array_ptr32, 60);
-        (*instance).deallocate_buffer(array_ptr32, size_of::<FFI32_ArrowArray>() as u32);
+        // (*instance).deallocate_buffer(array_ptr32, size_of::<FFI32_ArrowArray>() as u32);
         println!("array release func8");
     }
 }
@@ -344,10 +361,19 @@ pub fn release_exported_array(_array32: u32) {
 impl FFI32_ArrowArray {
     // Allocate new FFI32_ArrowArray using a Wasm allocations
     pub(crate) fn new(instance: &CoreInstance) -> *mut Self {
-        println!("size of ffi32 array = {:?}", size_of::<Self>());
+        println!("size of ffi32 array = {:?}, base = {:?}", size_of::<Self>(), instance.allocator_base());
         let allocated_offset = instance.allocate_buffer(size_of::<Self>() as u32);
-        let s32 = to64(instance.allocator_base(), allocated_offset) as *mut FFI32_ArrowArray;
-        s32 as *mut Self
+        let a32 = to64(instance.allocator_base(), allocated_offset) as *mut FFI32_ArrowArray;
+        a32 as *mut Self
+    }
+
+    // Allocate new FFI32_ArrowArray using a Wasm allocations
+    pub(crate) fn new_root(instance: &CoreInstance) -> *mut Self {
+        println!("size of ffi32 array = {:?}, base = {:?}", size_of::<Self>(), instance.allocator_base());
+        let a32 = instance.new_ffi_array();
+        // let s32 = instance.allocate_buffer(size_of::<Self>() as u32);
+        let a32 = to64(instance.allocator_base(), a32);
+        a32 as *mut Self
     }
 
     pub fn delete(instance: &CoreInstance, array_ptr: u32) {
@@ -413,6 +439,7 @@ impl FFI32_ArrowArray {
                 let a32_child_item = unsafe { a32_children_array.add(i) };
                 // the FFI64_ArrowSchema of the i-th child 
                 let a64_child = unsafe { &mut *(a64_child_item as *mut FFI64_ArrowArray) };
+                // let a32_child = FFI32_ArrowArray::new_root(instance);
                 let a32_child = FFI32_ArrowArray::new(instance);
                 unsafe {
                     // Fill the new child with s64_child
@@ -425,8 +452,8 @@ impl FFI32_ArrowArray {
         }
         
         let fun_ptr = release_exported_array as *const () as u64;
-        self.release = fun_ptr as u32;
-        // self.release = None;
+        // self.release = fun_ptr as u32;
+        self.release = 0;
     }
 }
 
@@ -478,7 +505,7 @@ pub fn release_exported_schema64(_schema64: u64) {
     let base;
     let global_schema;
     unsafe { base = GLOBAL_ENV.base_mem; };
-    unsafe { global_schema = GLOBAL_ENV.schema; };
+    unsafe { global_schema = GLOBAL_ENV.schema64; };
     // check if the parameter is equal to the global
     unsafe{
         // Get the schema and the private data
@@ -491,7 +518,7 @@ pub fn release_exported_schema64(_schema64: u64) {
         println!("release schema 64 release32 ptr = {:?}, inner ptr = {:?}", (*inner).release, inner);
         // call Wasm function to call the 32 release function?
         (*instance).release_schema32(to32(base, inner as u64));
-        println!("inner = {:?}\nprivate data = {:?}", *inner, *private_data);
+        // println!("inner = {:?}\nprivate data = {:?}", *inner, *private_data);
         (*inner).release = 0;
 
         // Go over the children and call this function with each child in order to release the 64bit-related memory
@@ -509,7 +536,7 @@ pub fn release_exported_schema64(_schema64: u64) {
                 println!("release func4, child = {:?}", child);
                 if child.release != None {
                     // Use this function to release the child also, we need to change the global variable to the child
-                    GLOBAL_ENV.schema = child as *const _ as u64;
+                    GLOBAL_ENV.schema64 = child as *const _ as u64;
                     // The value of the parameter is not used
                     release_exported_schema64(0);
                     println!("release func6, child = {:?}", child);
@@ -640,7 +667,7 @@ pub fn release_exported_array64(_array64: u64) {
     let base;
     let global_array;
     unsafe { base = GLOBAL_ENV.base_mem; };
-    unsafe { global_array = GLOBAL_ENV.array; };
+    unsafe { global_array = GLOBAL_ENV.array64; };
     // check if the parameter is equal to the global
 
     unsafe{
@@ -681,7 +708,7 @@ pub fn release_exported_array64(_array64: u64) {
                 println!("release array func4, child = {:?}", child);
                 if child.release != None {
                     // Use this function to release the child also, we need to change the global variable to the child
-                    GLOBAL_ENV.array = child as *const _ as u64;
+                    GLOBAL_ENV.array64 = child as *const _ as u64;
                     // The value of the parameter is not used
                     release_exported_array64(0);
                     println!("release func6, child = {:?}", child);
