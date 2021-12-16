@@ -1,15 +1,14 @@
-use std::ptr::NonNull;
-use std::{io, mem};
-use std::sync::Arc;
-use arrow::buffer::Buffer;
-use wasmer::{Function, NativeFunc, imports};
+use std::io;
+use wasmer::{imports, Function, NativeFunc};
 use wasmer::{Cranelift, Instance, Module, Store, Universal};
-use wasmer_wasi::WasiState;
-use arrow::ffi::{self, ArrowArrayRef, FFI_ArrowArray, FFI_ArrowSchema};
-use arrow::array::{Array, make_array_from_raw};
+// use wasmer_wasi::WasiState;
 
-use crate::arch::{FFI32_ArrowArray, FFI32_ArrowSchema, FFI64_ArrowArray, FFI64_ArrowSchema, GLOBAL_ENV, release_exported_array, release_exported_schema, release_exported_schema64, release_exported_array64, to32, to64};
-use crate::types::{Pointer, jptr};
+use crate::arch::{
+    release_exported_array, release_exported_array64, release_exported_schema,
+    release_exported_schema64, to32, to64, FFI32_ArrowArray, FFI32_ArrowSchema, FFI64_ArrowArray,
+    FFI64_ArrowSchema, GLOBAL_ENV,
+};
+use crate::types::{jptr, Pointer};
 
 // use dhat::Dhat;
 
@@ -31,12 +30,10 @@ pub struct CoreInstance {
     pub release_schema32_func: NativeFunc<u32, ()>,
     // array32 ptr -> void
     pub release_array32_func: NativeFunc<u32, ()>,
-    pub allocated_size: NativeFunc<(), u64>,
-    pub released_size: NativeFunc<(), u64>,
+    // void -> schema32
     pub new_ffi_schema: NativeFunc<(), u32>,
+    // void -> array32
     pub new_ffi_array: NativeFunc<(), u32>,
-    pub delete_ffi_schema: NativeFunc<u32, ()>,
-    pub delete_ffi_array: NativeFunc<u32, ()>,
 }
 
 #[repr(C)]
@@ -57,16 +54,14 @@ pub struct FFI_TransformOutput {
 }
 
 impl CoreInstance {
-    /// create a new [`Ffi_ArrowSchema`]. This fails if the fields' [`DataType`] is not supported.
+    /// create a new [`ffi_ArrowSchema`]. This fails if the fields' [`DataType`] is not supported.
     pub fn try_new(module_bytes: &[u8]) -> Result<Self, io::Error> {
-        // let _dhat = Dhat::start_heap_profiling();
-
         let store = Store::new(&Universal::new(Cranelift::default()).engine());
         let module = Module::new(&store, module_bytes).unwrap();
         // let mut wasi_env = WasiState::new("transformer").finalize().unwrap();
         let release_native_schema = Function::new_native(&store, release_exported_schema);
         let release_native_array = Function::new_native(&store, release_exported_array);
-        let import_object = imports! { 
+        let import_object = imports! {
             "env" => {
                 "release_func" => release_native_schema,
                 "release_array_func" => release_native_array,
@@ -75,7 +70,7 @@ impl CoreInstance {
         // let import_object = wasi_env.import_object(&module).unwrap();
 
         let instance = Instance::new(&module, &import_object).unwrap();
-        
+
         let allocate_buffer_func = instance
             .exports
             .get_native_function::<u32, u32>("allocate_buffer")
@@ -105,34 +100,20 @@ impl CoreInstance {
             .exports
             .get_native_function::<u32, ()>("release_schema32")
             .unwrap();
-            
+
         let release_array32_func = instance
             .exports
             .get_native_function::<u32, ()>("release_array32")
             .unwrap();
-        let allocated_size = instance
-            .exports
-            .get_native_function::<(), u64>("allocated_size")
-            .unwrap();
-        let released_size = instance
-            .exports
-            .get_native_function::<(), u64>("released_size")
-            .unwrap();
+
         let new_ffi_schema = instance
             .exports
             .get_native_function::<(), u32>("new_ffi_schema")
             .unwrap();
+
         let new_ffi_array = instance
             .exports
             .get_native_function::<(), u32>("new_ffi_array")
-            .unwrap();
-        let delete_ffi_schema = instance
-            .exports
-            .get_native_function::<u32, ()>("delete_ffi_schema")
-            .unwrap();
-        let delete_ffi_array = instance
-            .exports
-            .get_native_function::<u32, ()>("delete_ffi_array")
             .unwrap();
 
         Ok(Self {
@@ -141,15 +122,11 @@ impl CoreInstance {
             deallocate_buffer_func,
             prepare_transform_func,
             transform_func,
-            finalize_tansform_func, 
+            finalize_tansform_func,
             release_schema32_func,
             release_array32_func,
-            allocated_size,
-            released_size,
             new_ffi_schema,
             new_ffi_array,
-            delete_ffi_schema,
-            delete_ffi_array
         })
     }
 
@@ -157,7 +134,7 @@ impl CoreInstance {
         let base = self.allocator_base();
         let ctx = (base + context) as *const FFI_TransformContext;
         let ctx = unsafe { &*ctx };
-        ctx    
+        ctx
     }
 
     pub fn allocator_base(&self) -> u64 {
@@ -165,7 +142,7 @@ impl CoreInstance {
         let mem_ptr = memory.data_ptr();
         mem_ptr as u64
     }
-    
+
     pub fn allocate_buffer(&self, size: u32) -> u32 {
         self.allocate_buffer_func.call(size).unwrap()
     }
@@ -181,19 +158,15 @@ impl CoreInstance {
 
     pub fn transform(&self, context: u32) -> jptr {
         let base = self.allocator_base();
-        println!("transform rust side {:?}, {:?}", context, to64(base, context));
         // Get the schema and arrow of 64 bit from the context
         let ctx = to64(base, context) as *mut FFI_TransformContext;
-        let ctx = unsafe{ &mut *ctx };
+        let ctx = unsafe { &mut *ctx };
         let in_schema64 = (ctx.in_schema as u64 + ctx.base) as *mut FFI64_ArrowSchema;
         let in_array64 = (ctx.in_array as u64 + ctx.base) as *mut FFI64_ArrowArray;
         // Allocate new, empty arrow and schema of 32 bit
-        // let schema32 = FFI32_ArrowSchema::new(&self);
-        // let array32 = FFI32_ArrowArray::new(&self);
         let schema32 = FFI32_ArrowSchema::new_root(&self);
         let array32 = FFI32_ArrowArray::new_root(&self);
-        println!("schema 32 = {:?}, array 32 = {:?}", schema32, array32);
-        unsafe { 
+        unsafe {
             // Convert the 64 bit schema to a 32 bit schema
             (*schema32).from(self, &mut *in_schema64);
             println!("schema After arch.rs from {:?}", *schema32);
@@ -209,25 +182,18 @@ impl CoreInstance {
         unsafe { GLOBAL_ENV.array32 = array32 as u64 };
         println!("schema 32 = {:?}, array 32 = {:?}", schema32, array32);
 
-        // let result = unsafe { make_array_from_raw(array, schema) };
-        // println!("result = {:?}", result);
-
         // Call the Wasm function that performs the transformation
         self.transform_func.call(context).unwrap();
         println!("schema 32 = {:?}, array 32 = {:?}", schema32, array32);
 
-        // self.delete_ffi_schema(to32(base, schema32 as u64));
-        // self.delete_ffi_array(to32(base, array32 as u64));
-
         // Convert back from 32 to 64 after transformation
         let out_schema32 = (ctx.out_schema as u64 + ctx.base) as *mut FFI32_ArrowSchema;
         let out_array32 = (ctx.out_array as u64 + ctx.base) as *mut FFI32_ArrowArray;
-        unsafe { println!("transformed jni schema = {:?}", *out_schema32); }
+        
         // Allocate new, empty arrow and schema of 64 bit
         let mut out_schema64 = FFI64_ArrowSchema::new();
         let mut out_array64 = FFI64_ArrowArray::new();
-        unsafe { 
-            println!("out schema64 = {:?},, out schema 32 = {:?}", &out_schema64 as *const _ as u64, *out_schema32);
+        unsafe {
             // Convert the 32 bit schema to a 64 bit schema
             out_schema64.from(self, &mut *out_schema32);
             println!("schema After arch.rs from 32 to 64 {:?}", out_schema64);
@@ -246,22 +212,6 @@ impl CoreInstance {
             out_schema: Pointer::new(out_schema64).into(),
             out_array: Pointer::new(out_array64).into(),
         };
-        // let test_schema = result.out_schema as *mut FFI_ArrowSchema;
-        // let test_array = &out_array64 as *const _ as u64 as *mut FFI_ArrowArray;
-        // unsafe { println!("rust outschema = {:?}, array = {:?}", *(result.out_schema as *mut FFI64_ArrowSchema), *(result.out_array as *mut FFI64_ArrowArray));
-            // let array = ffi::ArrowArray::try_from_raw(test_array, test_schema).unwrap();
-            // // let buf = create_buffer(Arc::new((*test_array).clone()), &*(result.out_array as *mut FFI64_ArrowArray), 0, 100);
-            // println!("core.rs create buf = {:?}", array.buffers());
-        // }
-        // let out_record = unsafe { make_array_from_raw(test_array, test_schema) };
-        // unsafe { println!("test schema = {:?}, array = {:?}\nrecord = {:?}", *test_schema, *test_array, out_record); }
-        // unsafe { println!("rust res schema ptr = {:?}, array = {:?}", result.out_schema, result.out_array); }
-        
-                // Delete allocated schema32 and array 32
-                // FFI32_ArrowSchema::delete(&self, to32(base, schema32 as u64));
-                // FFI32_ArrowArray::delete(&self, to32(base, array32 as u64));
-        // unsafe { mem::forget(*(result.out_schema as *mut FFI64_ArrowSchema)); }
-        // mem::forget(result.out_array);
         let res = Pointer::new(result);
         res.into()
 
@@ -276,8 +226,9 @@ impl CoreInstance {
     pub fn finalize_tansform(&self, context: u32, schema_ptr: u32, array_ptr: u32) {
         release_exported_schema64(0);
         release_exported_array64(0);
-        // self.deallocate_buffer(10000, 100000);
-        self.finalize_tansform_func.call(context, schema_ptr, array_ptr).unwrap();
+        self.finalize_tansform_func
+            .call(context, schema_ptr, array_ptr)
+            .unwrap();
     }
 
     pub fn release_schema32(&self, schema32: u32) {
@@ -288,14 +239,6 @@ impl CoreInstance {
         self.release_array32_func.call(array32).unwrap();
     }
 
-    pub fn allocated_size(&self) {
-        self.allocated_size.call().unwrap();
-    }
-
-    pub fn released_size(&self) {
-        self.released_size.call().unwrap();
-    }
-
     pub fn new_ffi_schema(&self) -> u32 {
         self.new_ffi_schema.call().unwrap()
     }
@@ -304,11 +247,4 @@ impl CoreInstance {
         self.new_ffi_array.call().unwrap()
     }
 
-    pub fn delete_ffi_schema(&self, schema: u32) {
-        self.delete_ffi_schema.call(schema).unwrap()
-    }
-
-    pub fn delete_ffi_array(&self, array: u32) {
-        self.delete_ffi_array.call(array).unwrap()
-    }
 }

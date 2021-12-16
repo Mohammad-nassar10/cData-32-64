@@ -1,6 +1,4 @@
 use std::convert::TryInto;
-
-use crate::arch::FFI64_ArrowSchema;
 use crate::core::{CoreInstance, FFI_TransformContext, FFI_TransformOutput};
 use crate::types::jptr;
 use crate::types::Pointer;
@@ -48,9 +46,6 @@ pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_transform(
 ) -> jptr {
     let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
     let result = instance.transform(context.try_into().unwrap());
-    // unsafe { println!("rust outschema ptr = {:?}, schema = {:?}", *(result.out_schema as *mut FFI64_ArrowSchema), result.out_array) };
-    // let result = Pointer::new(result);
-    // result.into()
     result
 }
 
@@ -75,8 +70,6 @@ pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_getInputSchema(
     context: jlong,
 ) -> jlong {
     let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
-    // let ctx = (instance.allocator_base() + context as u64) as *const FFI_TransformContext;
-    // let ctx = unsafe { &*ctx };
     let ctx = instance.context(context as u64);
     ctx.in_schema as jlong
 }
@@ -101,7 +94,6 @@ pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_getOutputSchema(
     transform_output: jlong,
 ) -> jlong {
     let out = Into::<Pointer<FFI_TransformOutput>>::into(transform_output).borrow();
-    // let out = unsafe { &*out };
     out.out_schema as jlong
 }
 
@@ -113,8 +105,6 @@ pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_getInputArray(
     context: jlong,
 ) -> jlong {
     let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
-    // let ctx = context as *const FFI_TransformContext;
-    // let ctx = unsafe { &*ctx };
     let ctx = instance.context(context as u64);
     ctx.in_array as jlong
 }
@@ -128,8 +118,6 @@ pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_getOutputArray2(
 ) -> jlong {
     let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
     let ctx = instance.context(context as u64);
-    // let ctx = context as *const FFI_TransformContext;
-    // let ctx = unsafe { &*ctx };
     ctx.out_array as jlong
 }
 
@@ -177,22 +165,3 @@ pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_wasmDealloc(
     instance.deallocate_buffer(offset.try_into().unwrap(), size.try_into().unwrap());
 }
 
-#[no_mangle]
-pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_allocatedSize(
-    _jre: JNIEnv,
-    _object: JObject,
-    instance_ptr: jptr,
-) {
-    let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
-    instance.allocated_size();
-}
-
-#[no_mangle]
-pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_releasedSize(
-    _jre: JNIEnv,
-    _object: JObject,
-    instance_ptr: jptr,
-) {
-    let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
-    instance.released_size();
-}
