@@ -34,7 +34,7 @@ import io.fybrik.adp.core.transformer.Transformer;
 public class ExampleProducer extends NoOpFlightProducer implements AutoCloseable {
     private final Location location;
     private final BufferAllocator allocator;
-    private final Transformer transformer;
+    public final Transformer transformer;
     private final int RecordsPerBatch = 1024 * 1024;
     private final VectorSchemaRoot constVectorSchemaRoot;
     private boolean isNonBlocking = false;
@@ -49,7 +49,7 @@ public class ExampleProducer extends NoOpFlightProducer implements AutoCloseable
         this.transformer.init(this.constVectorSchemaRoot);
     }
 
-    private VectorSchemaRoot getConstVectorSchemaRoot() {
+    public VectorSchemaRoot getConstVectorSchemaRoot() {
         BigIntVector a = new BigIntVector("a", this.allocator);
         BigIntVector b = new BigIntVector("b", this.allocator);
         BigIntVector c = new BigIntVector("c", this.allocator);

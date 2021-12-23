@@ -32,10 +32,11 @@ public class IPCTransformer implements Transformer {
         this.allocator = allocator;
         this.instancePtr = instance.getInstancePtr();
     }
-
+    
     public void init(VectorSchemaRoot root) {
         Preconditions.checkState(this.originalRoot == null, "init can only be called once");
         this.originalRoot = root;
+        this.closed = false;
     }
 
     public VectorSchemaRoot originalRoot() {
@@ -94,13 +95,13 @@ public class IPCTransformer implements Transformer {
             // Read the byte array to get the transformed batch
             ArrowStreamReader reader = new ArrowStreamReader(
                     new ByteArrayInputStream(transformedRecordBatchByteArray), allocator);
-                // transformedRoot = reader.getVectorSchemaRoot();
+                transformedRoot = reader.getVectorSchemaRoot();
                 
-                VectorSchemaRoot transformedVSR = reader.getVectorSchemaRoot();
+                // VectorSchemaRoot transformedVSR = reader.getVectorSchemaRoot();
                 reader.loadNextBatch();
-                this.transformedRoot = transformedVSR;
-                transformedVSR.close();
-                this.transformedRoot.close();
+                // this.transformedRoot = transformedVSR;
+                // transformedVSR.close();
+                // this.transformedRoot.close();
                 // System.out.println("java out vsr " + this.transformedRoot.contentToTSVString());
                 // VectorUnloader unloader = new VectorUnloader(transformedVSR);
 
@@ -124,10 +125,11 @@ public class IPCTransformer implements Transformer {
     }
 
     public void close() throws Exception {
-        // System.out.println("close wasm transformer");
+        System.out.println("close wasm transformer1");
         if (!this.closed) {
+            System.out.println("close wasm transformer2");
             if (this.transformedRoot != null) {
-                // JniWrapper.get().finish(instancePtr, context, schemaPtr, arrayPtr);
+                System.out.println("close wasm transformer3");
                 this.transformedRoot.close();
             }
             this.closed = true;
@@ -136,7 +138,6 @@ public class IPCTransformer implements Transformer {
 
     @Override
     public void releaseHelpers() {
-        // TODO Auto-generated method stub
-        
+        this.transformedRoot.close();
     }
 }

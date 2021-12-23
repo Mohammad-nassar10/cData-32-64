@@ -74,7 +74,7 @@ public class WasmTransformer implements Transformer {
         ArrowSchema outSchema = ArrowSchema.wrap(out_schema);
         ArrowArray outArray = ArrowArray.wrap(out_array);
 
-        transformedRoot = Data.importVectorSchemaRoot(allocator, outArray, outSchema, null);
+        this.transformedRoot = Data.importVectorSchemaRoot(allocator, outArray, outSchema, null);
         // System.out.println("java out vsr " + transformedRoot.contentToTSVString());
 
         System.out.println("finish");
