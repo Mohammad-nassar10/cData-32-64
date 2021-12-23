@@ -165,3 +165,48 @@ pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_wasmDealloc(
     instance.deallocate_buffer(offset.try_into().unwrap(), size.try_into().unwrap());
 }
 
+#[no_mangle]
+pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_GetFirstElemOfTuple(
+    _jre: JNIEnv,
+    _object: JObject,
+    instance_ptr: jptr,
+    tuple_ptr: jptr
+) -> jlong {
+    let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
+    instance.GetFirstElemOfTuple(tuple_ptr.try_into().unwrap()) as jlong
+}
+
+#[no_mangle]
+pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_GetSecondElemOfTuple(
+    _jre: JNIEnv,
+    _object: JObject,
+    instance_ptr: jptr,
+    tuple_ptr: jptr
+) -> jlong {
+    let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
+    instance.GetSecondElemOfTuple(tuple_ptr.try_into().unwrap()) as jlong
+}
+
+#[no_mangle]
+pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_DropTuple(
+    _jre: JNIEnv,
+    _object: JObject,
+    instance_ptr: jptr,
+    tuple_ptr: jptr
+) {
+    let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
+    instance.DropTuple(tuple_ptr.try_into().unwrap());
+}
+
+#[no_mangle]
+pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_TransformationIPC(
+    _jre: JNIEnv,
+    _object: JObject,
+    instance_ptr: jptr,
+    address: jptr,
+    size: jlong,
+) -> jlong {
+    let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
+    instance.TransformationIPC(address.try_into().unwrap(), size.try_into().unwrap()) as jlong
+}
+

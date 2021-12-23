@@ -1,7 +1,7 @@
 use std::io;
 use wasmer::{imports, Function, NativeFunc};
 use wasmer::{Cranelift, Instance, Module, Store, Universal};
-// use wasmer_wasi::WasiState;
+use wasmer_wasi::WasiState;
 
 use crate::arch::{
     release_exported_array, release_exported_array64, release_exported_schema,
@@ -34,6 +34,10 @@ pub struct CoreInstance {
     pub new_ffi_schema: NativeFunc<(), u32>,
     // void -> array32
     pub new_ffi_array: NativeFunc<(), u32>,
+    pub get_first_elem_of_tuple: NativeFunc<u32, u32>,
+    pub get_second_elem_of_tuple: NativeFunc<u32, u32>,
+    pub drop_tuple: NativeFunc<u32, ()>,
+    pub transformation_ipc: NativeFunc<(u32, u32), u32>,
 }
 
 #[repr(C)]
@@ -116,6 +120,23 @@ impl CoreInstance {
             .get_native_function::<(), u32>("new_ffi_array")
             .unwrap();
 
+        let get_first_elem_of_tuple = instance
+            .exports
+            .get_native_function::<u32, u32>("get_first_of_tuple")
+            .unwrap();
+        let get_second_elem_of_tuple = instance
+            .exports
+            .get_native_function::<u32, u32>("get_second_of_tuple")
+            .unwrap();
+        let drop_tuple = instance
+            .exports
+            .get_native_function::<u32, ()>("drop_tuple")
+            .unwrap();
+        let transformation_ipc = instance
+            .exports
+            .get_native_function::<(u32, u32), u32>("read_transform_write_from_bytes")
+            .unwrap();
+
         Ok(Self {
             instance,
             allocate_buffer_func,
@@ -127,6 +148,10 @@ impl CoreInstance {
             release_array32_func,
             new_ffi_schema,
             new_ffi_array,
+            get_first_elem_of_tuple,
+            get_second_elem_of_tuple,
+            drop_tuple,
+            transformation_ipc
         })
     }
 
@@ -169,10 +194,10 @@ impl CoreInstance {
         unsafe {
             // Convert the 64 bit schema to a 32 bit schema
             (*schema32).from(self, &mut *in_schema64);
-            println!("schema After arch.rs from {:?}", *schema32);
+            // println!("schema After arch.rs from {:?}", *schema32);
             // Convert the 64 bit array to a 32 bit array
             (*array32).from(self, &mut *in_array64);
-            println!("array After arch.rs from {:?}", *array32);
+            // println!("array After arch.rs from {:?}", *array32);
         }
         // Update the contex with the 32 bit schema and array
         ctx.in_schema = to32(ctx.base, schema32 as u64);
@@ -180,11 +205,11 @@ impl CoreInstance {
         // Set a global variable with the schema and array in order to release them afterwards
         unsafe { GLOBAL_ENV.schema32 = schema32 as u64 };
         unsafe { GLOBAL_ENV.array32 = array32 as u64 };
-        println!("schema 32 = {:?}, array 32 = {:?}", schema32, array32);
+        // println!("schema 32 = {:?}, array 32 = {:?}", schema32, array32);
 
         // Call the Wasm function that performs the transformation
         self.transform_func.call(context).unwrap();
-        println!("schema 32 = {:?}, array 32 = {:?}", schema32, array32);
+        // println!("schema 32 = {:?}, array 32 = {:?}", schema32, array32);
 
         // Convert back from 32 to 64 after transformation
         let out_schema32 = (ctx.out_schema as u64 + ctx.base) as *mut FFI32_ArrowSchema;
@@ -196,10 +221,10 @@ impl CoreInstance {
         unsafe {
             // Convert the 32 bit schema to a 64 bit schema
             out_schema64.from(self, &mut *out_schema32);
-            println!("schema After arch.rs from 32 to 64 {:?}", out_schema64);
+            // println!("schema After arch.rs from 32 to 64 {:?}", out_schema64);
             // Convert the 32 bit array to a 64 bit array
             out_array64.from(self, &mut *out_array32);
-            println!("array After arch.rs from 32 to 64 {:?}", out_array64);
+            // println!("array After arch.rs from 32 to 64 {:?}", out_array64);
             // println!("buffers of array After arch.rs from 32 to 64, buffers ptr = {:?}", out_array64.buffers, /*(*(out_array64.buffers as *const Vec<u64>)).get(0)*/);
         }
         // Set a global variable with the schema and array in order to release them afterwards
@@ -224,6 +249,7 @@ impl CoreInstance {
     }
 
     pub fn finalize_tansform(&self, context: u32, schema_ptr: u32, array_ptr: u32) {
+        // println!("finalize transform");
         release_exported_schema64(0);
         release_exported_array64(0);
         self.finalize_tansform_func
@@ -246,5 +272,46 @@ impl CoreInstance {
     pub fn new_ffi_array(&self) -> u32 {
         self.new_ffi_array.call().unwrap()
     }
+
+    #[no_mangle]
+    pub extern "system" fn TransformationIPC(&self, address: u32, length: u32) -> u32 {
+        // Get the wasm module instance and the functions we want to use
+        // let wasm_module = Into::<Pointer<WasmModule>>::into(wasm_module_ptr).borrow();
+        // let instance = &wasm_module.instance;
+        // let read_transform_write_from_bytes_wasm = instance.exports.get_function("read_transform_write_from_bytes").unwrap().native::<(i64, i64), i64>().unwrap();
+        
+        // Call the function that read the bytes in the `address` parameter and getting the appropriate record batch
+        // Then, it makes a transformation, writes back the transformed record batch, and returns a tuple of `(address, len)` of the transformed batch
+        let transformed_tuple = self.transformation_ipc.call(address, length).unwrap();
+        transformed_tuple
+    }
+
+    #[no_mangle]
+    pub extern "system" fn GetFirstElemOfTuple(&self, tuple_ptr: u32) -> u32 {
+        // // Get the wasm module instance and the functions we want to use
+        // let wasm_module = Into::<Pointer<WasmModule>>::into(wasm_module_ptr).borrow();
+        // let instance = &wasm_module.instance;
+        // let get_first_of_tuple = instance.exports.get_function("get_first_of_tuple").unwrap().native::<i64, i64>().unwrap();
+        self.get_first_elem_of_tuple.call(tuple_ptr).unwrap()
+    }
+
+    #[no_mangle]
+    pub extern "system" fn GetSecondElemOfTuple(&self, tuple_ptr: u32) -> u32 {
+        // Get the wasm module instance and the functions we want to use
+        // let wasm_module = Into::<Pointer<WasmModule>>::into(wasm_module_ptr).borrow();
+        // let instance = &wasm_module.instance;
+        // let get_second_of_tuple = instance.exports.get_function("get_second_of_tuple").unwrap().native::<i64, i64>().unwrap();
+        self.get_second_elem_of_tuple.call(tuple_ptr).unwrap()
+    }
+
+    #[no_mangle]
+    pub extern "system" fn DropTuple(&self, tuple_ptr: u32) {
+        // Get the wasm module instance and the functions we want to use
+        // let wasm_module = Into::<Pointer<WasmModule>>::into(wasm_module_ptr).borrow();
+        // let instance = &wasm_module.instance;
+        // let drop_tuple_wasm = instance.exports.get_function("drop_tuple").unwrap().native::<i64, ()>().unwrap();
+        self.drop_tuple.call(tuple_ptr).unwrap();
+    }
+
 
 }

@@ -24,7 +24,10 @@ public class NoOpTransformer implements Transformer {
 
     @Override
     public VectorSchemaRoot originalRoot() {
-        // TODO Auto-generated method stub
         return this.root;
+    }
+
+    @Override
+    public void releaseHelpers() {
     }
 }

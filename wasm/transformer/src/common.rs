@@ -85,7 +85,7 @@ impl TransformContext32 {
         unsafe {
             (*schema_helper).release = Some(release_func);
             let schema = schema_helper as *const _ as *mut FFI_ArrowSchema;
-            println!("input common2 = {:?}", (*schema));
+            // println!("input common2 = {:?}", (*schema));
 
             // The same for the array, to change the release field
             let mut array_helper = self.in_array as *mut FFI_ArrowArray_helper;
@@ -95,7 +95,7 @@ impl TransformContext32 {
             // Build the array from c-data interface
             let result = make_array_from_raw(array, schema);
             let result = result.ok();
-            println!("after make array, {:?}", result);
+            // println!("after make array, {:?}", result);
             let res = Result {
                 array_ref: result,
                 ffi_schema: 0,
@@ -145,7 +145,7 @@ pub unsafe extern "C" fn finalize_tansform(_ctx: u32, schema_ptr: u32, array_ptr
 
 #[no_mangle]
 pub unsafe extern "C" fn release_schema32(schema32: u32) {
-    println!("Wasm release 32, schema32 ptr = {:?}", schema32);
+    // println!("Wasm release 32, schema32 ptr = {:?}", schema32);
     let schema_ptr = schema32 as *mut FFI_ArrowSchema;
     let schema_helper_ptr = schema32 as *mut FFI_ArrowSchema_helper;
     let schema_helper = &*schema_helper_ptr;
@@ -157,7 +157,7 @@ pub unsafe extern "C" fn release_schema32(schema32: u32) {
 
 #[no_mangle]
 pub unsafe extern "C" fn release_array32(array32: u32) {
-    println!("Wasm release 32, array32 ptr = {:?}", array32);
+    // println!("Wasm release 32, array32 ptr = {:?}", array32);
     let array_ptr = array32 as *mut FFI_ArrowArray;
     let array_helper_ptr = array32 as *mut FFI_ArrowArray_helper;
     let array_helper = &*array_helper_ptr;

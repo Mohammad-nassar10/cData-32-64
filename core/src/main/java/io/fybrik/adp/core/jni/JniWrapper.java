@@ -38,9 +38,13 @@ public class JniWrapper {
 
   public native void wasmDealloc(long instancePtr, long offset, long size);
 
-  public native long allocatedSize(long instancePtr);
-
-  public native long releasedSize(long instancePtr);
+  public native long GetFirstElemOfTuple(long instance_ptr, long tuple_ptr);
+  
+  public native long GetSecondElemOfTuple(long instance_ptr, long tuple_ptr);
+  
+  public native void DropTuple(long instance_ptr, long tuple_ptr);
+  
+  public native long TransformationIPC(long instance_ptr, long allocatedAddress, long size);
 
   // public native void convert_to_32(long instancePtr, long contextPtr);
 

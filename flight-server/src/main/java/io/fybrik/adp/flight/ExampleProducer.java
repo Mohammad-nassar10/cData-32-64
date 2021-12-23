@@ -1,5 +1,6 @@
 package io.fybrik.adp.flight;
 
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -16,7 +17,9 @@ import org.apache.arrow.flight.perf.impl.PerfOuterClass.Token;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.BigIntVector;
 import org.apache.arrow.vector.FieldVector;
+import org.apache.arrow.vector.VectorLoader;
 import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.arrow.vector.VectorUnloader;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.checkerframework.checker.units.qual.s;
@@ -32,7 +35,7 @@ public class ExampleProducer extends NoOpFlightProducer implements AutoCloseable
     private final Location location;
     private final BufferAllocator allocator;
     private final Transformer transformer;
-    private final int RecordsPerBatch = 1024*10241;
+    private final int RecordsPerBatch = 1024 * 1024;
     private final VectorSchemaRoot constVectorSchemaRoot;
     private boolean isNonBlocking = false;
 
@@ -80,22 +83,40 @@ public class ExampleProducer extends NoOpFlightProducer implements AutoCloseable
     public void getStream(CallContext context, Ticket ticket, ServerStreamListener listener) {
         Runnable loadData = () -> {
             listener.setUseZeroCopy(true);
+            VectorLoader loader = null;
             VectorSchemaRoot transformedRoot = null;
-            for(int i = 0; i < 10000; ++i) {
-                System.out.println(i);
+            for(int i = 0; i < 1000; ++i) {
+                // System.out.println(i);
                 // System.out.println("init = " + this.transformer.originalRoot().contentToTSVString());
-                this.transformer.next();
+                try {
+                    this.transformer.next();
+                } catch (IOException e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
                 // System.out.println("get stream = " + this.transformer.root().contentToTSVString());
                 if (transformedRoot == null) {
                     transformedRoot = this.transformer.root();
+                    // VectorUnloader unloader = new VectorUnloader(transformedRoot);
                     if (transformedRoot != null) {
                         listener.start(transformedRoot);
                     }
                 }
-
+                // // First time initialization
+                // if (loader == null) {
+                //     VectorSchemaRoot root_out = VectorSchemaRoot.create(transformedRoot.getSchema(), allocator);
+                //     loader = new VectorLoader(root_out);
+                //     // listener.setUseZeroCopy(zeroCopy);
+                //     listener.start(root_out);
+                //     root_out.close();
+                    
+                // }
+                // loader.load(unloader.getRecordBatch());
+                // listener.putNext();
                 if (transformedRoot != null) {
                     listener.putNext();
                 }
+                this.transformer.releaseHelpers();
             }
 
             listener.completed();
@@ -122,7 +143,6 @@ public class ExampleProducer extends NoOpFlightProducer implements AutoCloseable
         if (this.transformer != null) {
             this.transformer.close();
         }
-
         this.constVectorSchemaRoot.close();
     }
 }
