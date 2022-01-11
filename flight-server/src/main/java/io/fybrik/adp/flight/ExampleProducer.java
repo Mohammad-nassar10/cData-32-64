@@ -85,7 +85,7 @@ public class ExampleProducer extends NoOpFlightProducer implements AutoCloseable
             listener.setUseZeroCopy(true);
             VectorLoader loader = null;
             VectorSchemaRoot transformedRoot = null;
-            for(int i = 0; i < 1000; ++i) {
+            for(int i = 0; i < 30000; ++i) {
                 // System.out.println(i);
                 // System.out.println("init = " + this.transformer.originalRoot().contentToTSVString());
                 try {

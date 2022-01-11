@@ -20,6 +20,7 @@ public class NoOpTransformer implements Transformer {
     }
 
     public void next() {
+        System.out.println("next no op transform");
     }
 
     @Override

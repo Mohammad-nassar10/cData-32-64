@@ -8,10 +8,11 @@ crate-type = ["cdylib"]
 
 [dependencies]
 wee_alloc = "0.4.5"
-arrow = { path = "/home/mohammadtn/FFI32/arrow-rs/arrow", default-features = false, features = ["prettyprint", "ipc"]}
+#arrow = { path = "/home/mohammadtn/FFI32/arrow-rs/arrow", default-features = false, features = ["prettyprint", "ipc"]}
 dhat = "0.2.4"
 wasm-tracing-allocator = "0.1.0"
-
+tokio = { version = "1.13", features = ["macros"]}
+datafusion = { path = "/home/mohammadtn/Wasm-mem-import/arrow-datafusion/datafusion", default-features = false }
 #[target.'cfg(not(target_env = "msvc"))'.dependencies]
 #jemallocator = "0.3.2"
 

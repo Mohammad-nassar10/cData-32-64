@@ -1,7 +1,7 @@
 use crate::array::FFI64_ArrowArray;
 use crate::schema::FFI64_ArrowSchema;
-use arrow::array::{make_array_from_raw, ArrayRef};
-use arrow::ffi::{FFI_ArrowArray, FFI_ArrowSchema};
+use datafusion::arrow::array::{make_array_from_raw, ArrayRef};
+use datafusion::arrow::ffi::{FFI_ArrowArray, FFI_ArrowSchema};
 use core::ffi::c_void;
 use std::os::raw::c_char;
 use std::sync::Arc;
@@ -11,16 +11,16 @@ extern "C" {
     fn release_array_func(array: u32);
 }
 // pub unsafe extern "C" fn release_func(schema: u32) {
-//     println!("release func wasm extern");
+//     // println!("release func wasm extern");
 //     let mut schema = schema as *mut FFI_ArrowSchema_helper;
-//     println!("release func schema = {:?}", *schema);
+//     // println!("release func schema = {:?}", *schema);
 //     (*schema).release = None;
 // }
 
 // pub unsafe extern "C" fn release_array_func(array: u32) {
-//     println!("array release func wasm extern");
+//     // println!("array release func wasm extern");
 //     let mut array = array as *mut FFI_ArrowArray_helper;
-//     println!("release func array = {:?}", *array);
+//     // println!("release func array = {:?}", *array);
 //     (*array).release = None;
 // }
 
@@ -29,7 +29,7 @@ extern "C" {
 pub(crate) struct TransformContext32 {
     base: u64,
     pub(crate) in_schema: u32,
-    in_array: u32,
+    pub in_array: u32,
     pub(crate) out_schema: u32,
     pub(crate) out_array: u32,
 }
@@ -79,6 +79,7 @@ pub struct FFI_ArrowArray_helper {
 impl TransformContext32 {
     // Gets the input ffi schema and ffi array (32bit) and returns the array ref to build the record batch
     pub fn input(&self) -> Result {
+        // println!("input");
         // Get the schema and change its release function to the imported release function
         // Due to the fact that the release field is private, we use a helper struct which has the same fields as FFI_ArrowSchema
         let mut schema_helper = self.in_schema as *mut FFI_ArrowSchema_helper;
@@ -92,10 +93,11 @@ impl TransformContext32 {
             (*array_helper).release = Some(release_array_func);
             let array = array_helper as *const _ as *mut FFI_ArrowArray;
 
+            // println!("before make array, {:?}", (*array));
             // Build the array from c-data interface
             let result = make_array_from_raw(array, schema);
             let result = result.ok();
-            // println!("after make array, {:?}", result);
+            // println!("after make array");
             let res = Result {
                 array_ref: result,
                 ffi_schema: 0,

@@ -48,10 +48,20 @@ public class IPCTransformer implements Transformer {
     }
 
     private byte[] WASMTransformByteArray(long instance_ptr, byte[] recordBatchByteArray, int size) {
+        // Allocate a block in wasm memory and copy the configuration that relates to
+        // the i-th transformation to this block
+        byte[] confBytes = "SELECT a, b, c, d FROM t WHERE b >= 4".getBytes();
+        int confSize = confBytes.length;
+        long confAllocatedAddress = JniWrapper.get().wasmAlloc(instance_ptr, confSize);
+        long wasm_mem_address = JniWrapper.get().wasmMemPtr(instance_ptr);
+        ByteBuffer buffer = MemoryUtil.directBuffer(confAllocatedAddress + wasm_mem_address, confSize);
+        buffer.put(confBytes, 0, confSize);
+
+        
         // Allocate a block in wasm memory and copy the byte array to this block
         long allocatedAddress = JniWrapper.get().wasmAlloc(instance_ptr, size);
-        long wasm_mem_address = JniWrapper.get().wasmMemPtr(instance_ptr);
-        ByteBuffer buffer = MemoryUtil.directBuffer(allocatedAddress + wasm_mem_address, size);
+        wasm_mem_address = JniWrapper.get().wasmMemPtr(instance_ptr);
+        buffer = MemoryUtil.directBuffer(allocatedAddress + wasm_mem_address, size);
         buffer.put(recordBatchByteArray, 0, size);
         // System.out.println("size = " + size);
 
@@ -59,7 +69,7 @@ public class IPCTransformer implements Transformer {
         // `allocatedAddress` memory address with length `size`
         // The function returns a tuple of `(address, lenght)` of as byte array that
         // represents the transformed vector schema root
-        long transformed_bytes_tuple = JniWrapper.get().TransformationIPC(instance_ptr, allocatedAddress, size);
+        long transformed_bytes_tuple = JniWrapper.get().TransformationIPC(instance_ptr, allocatedAddress, size, confAllocatedAddress, confSize);
 
         // Get the byte array from the memory address
         long transformed_bytes_address = JniWrapper.get().GetFirstElemOfTuple(instance_ptr, transformed_bytes_tuple);
@@ -125,11 +135,8 @@ public class IPCTransformer implements Transformer {
     }
 
     public void close() throws Exception {
-        System.out.println("close wasm transformer1");
         if (!this.closed) {
-            System.out.println("close wasm transformer2");
             if (this.transformedRoot != null) {
-                System.out.println("close wasm transformer3");
                 this.transformedRoot.close();
             }
             this.closed = true;

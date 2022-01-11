@@ -17,7 +17,8 @@ arrow = { path = "/home/mohammadtn/FFI32/arrow-rs/arrow", default-features = fal
 dhat = "0.2.4"
 wee_alloc = "0.4.5"
 wasm-tracing-allocator = "0.1.0"
-
+#wasmtime = "0.31.0"
+#wasmtime-wasi = "0.31.0"
 
 [profile.release]
 debug = 1

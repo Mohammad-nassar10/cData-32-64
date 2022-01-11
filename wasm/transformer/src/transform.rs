@@ -1,24 +1,42 @@
 use std::sync::Arc;
 
 use crate::common::TransformContext32;
+use datafusion::arrow::array::{StructArray, Array, Int64Array, ArrayRef};
+use datafusion::arrow::ipc::reader::StreamReader;
+use datafusion::arrow::ipc::writer::StreamWriter;
+use datafusion::arrow::record_batch::RecordBatch;
 // use arrow::compute::{gt_eq_scalar, filter_record_batch};
-use arrow::array::ArrayRef;
-use arrow::{
-    array::{Array, Int64Array, PrimitiveArray, StructArray},
-    compute::unary,
-    datatypes::{DataType, Field, Int64Type, Schema},
-    record_batch::RecordBatch,
-    ipc::{self, reader::StreamReader}
-};
+// use arrow::array::ArrayRef;
+// use arrow::{
+//     array::{Array, Int64Array, PrimitiveArray, StructArray},
+//     compute::unary,
+//     datatypes::{DataType, Field, Int64Type, Schema},
+//     record_batch::RecordBatch,
+//     ipc::{self, reader::StreamReader}
+// };
+use datafusion::datasource::MemTable;
+use datafusion::prelude::ExecutionContext;
 use crate::types::*;
-use arrow::ipc::writer::StreamWriter;
+// use arrow::ipc::writer::StreamWriter;
 use std::io::Cursor;
 use std::ops::Deref;
+
+use datafusion::*;
+// use datafusion::arrow::array::{Int32Array, StringArray};
+// use datafusion::arrow::datatypes::{DataType, Field, Schema};
+// use datafusion::arrow::record_batch::RecordBatch;
+
+// use datafusion::datasource::MemTable;
+use datafusion::error::Result;
+// use datafusion::prelude::*;
+// use std::os::raw::c_void;
+
 
 #[no_mangle]
 pub extern "C" fn transform(ctx: u32) {
     let ctx = ctx as *mut TransformContext32;
     let ctx = unsafe { &mut *ctx };
+    // println!("call input");
     let input_result = ctx.input();
     // Build the record batch from the input
     let array = input_result.array_ref.unwrap();
@@ -64,33 +82,69 @@ pub extern "C" fn transform(ctx: u32) {
     // );
 
     // Convert the transformed record batch to ffi schema and array
-    let transformed_record = transform_record_batch(input);
-    // let transformed_record = result.unwrap();
+    // let transformed_record = transform_record_batch(input);
+    // println!("sql str");
+    // let sql_str = "SELECT a, b, c, d FROM t WHERE b >= 5";
+    // let transformed = transform_record_batch(input, sql_str).unwrap();
+    // let transformed_record = transformed.get(0).unwrap().clone();
+    let transformed_record = input;
     let struct_array: StructArray = transformed_record.into();
     let (out_array, out_schema) = struct_array.to_raw().unwrap();
 
     // Set the output
     ctx.out_schema = out_schema as u32;
     ctx.out_array = out_array as u32;
+    
+    // ctx.out_schema = out_schema as u32;
+    // ctx.out_array = out_array as u32;
 }
 
-pub fn transform_record_batch(record_in: RecordBatch) -> RecordBatch {
-    let num_cols = record_in.num_columns();
-    let num_rows = record_in.num_rows();
-    // Build a zero array
-    let struct_array = Int64Array::from(vec![0; num_rows]);
-    let new_column = Arc::new(struct_array);
-    // Get the columns except the last column
-    let columns: &[ArrayRef] = record_in.columns();
-    let first_columns = columns[0..num_cols-1].to_vec();
-    // Create a new array with the same columns expect the last where it will be zero column
-    let new_array = [first_columns, vec![new_column]].concat();
-    // Create a transformed record batch with the same schema and the new array
-    let transformed_record = RecordBatch::try_new(
-        record_in.schema(),
-        new_array
-    ).unwrap();
-    transformed_record
+// pub fn transform_record_batch(record_in: RecordBatch) -> RecordBatch {
+//     // println!("transform rb");
+//     let num_cols = record_in.num_columns();
+//     let num_rows = record_in.num_rows();
+//     // Build a zero array
+//     let struct_array = Int64Array::from(vec![0; num_rows]);
+//     let new_column = Arc::new(struct_array);
+//     // Get the columns except the last column
+//     let columns: &[ArrayRef] = record_in.columns();
+//     let first_columns = columns[0..num_cols-1].to_vec();
+//     // Create a new array with the same columns expect the last where it will be zero column
+//     let new_array = [first_columns, vec![new_column]].concat();
+//     // Create a transformed record batch with the same schema and the new array
+//     let transformed_record = RecordBatch::try_new(
+//         record_in.schema(),
+//         new_array
+//     ).unwrap();
+//     transformed_record
+//     // record_in
+// }
+
+#[tokio::main(flavor = "current_thread")]
+// async fn transform_record_batch(record_in: RecordBatch, sql_str: &str) -> Result<Vec<RecordBatch>> {
+async fn transform_record_batch(record_in: RecordBatch, sql_str: &str) -> Result<Vec<RecordBatch>> {
+    println!("transform rb sql");
+    let batch: datafusion::arrow::record_batch::RecordBatch = record_in.clone();
+    // println!("batch = {:?}", batch);
+    // Register table
+    let mut ctx = ExecutionContext::new();
+    let provider = MemTable::try_new(batch.schema(), vec![vec![batch]])?;
+    ctx.register_table("t", Arc::new(provider))?;
+
+    // Execute query
+    println!("execute query");
+    // let df = ctx.sql("SELECT a, b, c, d FROM t WHERE b >= 5").await?;
+    let df = ctx.sql(sql_str).await?;
+
+    // Show results
+    let results = df.collect().await?;
+    // println!("results = {:?}", results);
+    // df.show().await?;
+    
+    // Ok(())
+    Ok(results)
+    // let tmp = Vec::from([record_in]);
+    // Ok(tmp)
 }
 
 #[no_mangle]
@@ -103,7 +157,14 @@ pub fn create_tuple_ptr(elem1: u32, elem2: u32) -> u32 {
  //////////IPC related functions//////////
 
 #[no_mangle]
-pub fn read_transform_write_from_bytes(bytes_ptr: u32, bytes_len: u32) -> u32 {
+pub fn read_transform_write_from_bytes(bytes_ptr: u32, bytes_len: u32,  conf_address: u32, conf_size: u32) -> u32 {
+    // println!("transform ipc");
+    // Read the memory block of the configuration and convert it to bytes array
+    let conf_bytes_array: Vec<u8> = unsafe{ Vec::from_raw_parts(conf_address as *mut _, conf_size as usize, conf_size as usize) };
+    // Convert the byte array to a Json Strong 
+    let sql_str = std::str::from_utf8(&conf_bytes_array).unwrap();
+    
+    
     // Read the byte array in the given address and length
     let bytes_array: Vec<u8> = unsafe{ Vec::from_raw_parts(bytes_ptr as *mut _, bytes_len as usize, bytes_len as usize) };
     let cursor = Cursor::new(bytes_array);
@@ -112,7 +173,13 @@ pub fn read_transform_write_from_bytes(bytes_ptr: u32, bytes_len: u32) -> u32 {
     reader.for_each(|batch| {
         let batch = batch.unwrap();
         // Transform the record batch
-        let transformed = transform_record_batch(batch);
+        // let transformed = transform_record_batch(batch);
+        // let transformed = batch;
+
+        let transformed = transform_record_batch(batch, sql_str).unwrap();
+        let transformed = transformed.get(0).unwrap().clone();
+        
+
 
         // Write the transformed record batch uing IPC
         let schema = transformed.schema();

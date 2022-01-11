@@ -44,7 +44,11 @@ public class JniWrapper {
   
   public native void DropTuple(long instance_ptr, long tuple_ptr);
   
-  public native long TransformationIPC(long instance_ptr, long allocatedAddress, long size);
+  public native long TransformationIPC(long instance_ptr, long allocatedAddress, long size, long confAllocatedAddress, long confSize);
+
+  public native void convert64To32(long instancePtr, long contextPtr);
+
+  public native long convert32To64(long instancePtr, long contextPtr);
 
   // public native void convert_to_32(long instancePtr, long contextPtr);
 

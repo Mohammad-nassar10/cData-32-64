@@ -66,8 +66,13 @@ public class WasmTransformer implements Transformer {
         // Use Java c data to fill the schema and the array with the original root
         Data.exportVectorSchemaRoot(allocator, originalRoot, null, inputArray, inputSchema);
 
+        // System.out.println("before tansform");
         // Call the transform function from Rust side
-        long transformResultPtr = JniWrapper.get().transform(instancePtr, context);
+        JniWrapper.get().convert64To32(instancePtr, context);
+        // long transformResultPtr = JniWrapper.get().transform(instancePtr, context);
+        JniWrapper.get().transform(instancePtr, context);
+        long transformResultPtr = JniWrapper.get().convert32To64(instancePtr, context);
+
         // read transformed vector
         long out_schema = JniWrapper.get().getOutputSchema(transformResultPtr);
         long out_array = JniWrapper.get().getOutputArray(transformResultPtr);
@@ -87,6 +92,7 @@ public class WasmTransformer implements Transformer {
     }
 
     public void releaseHelpers() {
+        // System.out.println("release helpers");
         JniWrapper.get().finish(instancePtr, context, schemaPtr, arrayPtr);
         this.transformedRoot.close();
     }

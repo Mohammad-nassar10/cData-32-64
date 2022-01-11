@@ -64,22 +64,25 @@ public class App {
 
         System.out.printf("Listening %s:%d%n", host, port);
         Location location = Location.forGrpcInsecure(host, port);
-        ExampleProducer producer = new ExampleProducer(location, allocator, transformer);
-        // VectorSchemaRoot input = producer.getConstVectorSchemaRoot();
-        int i = 0;
-        VectorSchemaRoot transformedRoot = null;
-        long start = System.currentTimeMillis();
-        for(i = 0; i < 1000; ++i) {
-            // System.out.println(i);
-            producer.transformer.next();
-            transformedRoot = producer.transformer.root();
-            // System.out.println("transformed = " + transformedRoot.contentToTSVString());
-            producer.transformer.releaseHelpers();
-            // producer.transformer.close();
+        try (ExampleProducer producer = new ExampleProducer(location, allocator, transformer)) {
+            // VectorSchemaRoot input = producer.getConstVectorSchemaRoot();
+            // System.out.println("original = " + input.contentToTSVString());
+            int i = 0;
+            VectorSchemaRoot transformedRoot = null;
+            long start = System.currentTimeMillis();
+            for(i = 0; i < 10000; ++i) {
+                System.out.println(i);
+                producer.transformer.next();
+                transformedRoot = producer.transformer.root();
+                // System.out.println("transformed = " + transformedRoot.contentToTSVString());
+                producer.transformer.releaseHelpers();
+                // producer.transformer.close();
+            }
+            long finish = System.currentTimeMillis();
+            System.out.println("Time spent traversing dataset: " + (finish - start) / 1000.0 + " seconds");
+            double throughput = (double) i * transformedRoot.getRowCount() * 4 * 4 / ((finish - start) / 1000.0);
+            System.out.println("Throughput: " + String.format("%.2f", throughput / (1024 * 1024)) + "MB/sec");
+            // producer.close();
         }
-        long finish = System.currentTimeMillis();
-        System.out.println("Time spent traversing dataset: " + (finish - start) / 1000.0 + " seconds");
-        double throughput = (double) i * transformedRoot.getRowCount() * 4 * 4 / ((finish - start) / 1000.0);
-        System.out.println("Throughput: " + String.format("%.2f", throughput / (1024 * 1024)) + "MB/sec");
     }
 }

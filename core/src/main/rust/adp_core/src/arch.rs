@@ -150,13 +150,13 @@ pub fn release_exported_schema(_schema32: u32) {
 /// 5. WITHIN WASM: Overrides release callback to imported function
 impl FFI32_ArrowSchema {
     // Allocate new FFI32_ArrowSchema using Wasm allocations. Used to allocate the children
-    pub fn new(instance: &CoreInstance) -> *mut Self {
+    pub fn new(instance: &mut CoreInstance) -> *mut Self {
         let allocated_offset = instance.allocate_buffer(size_of::<Self>() as u32);
         let s32 = to64(instance.allocator_base(), allocated_offset) as *mut FFI32_ArrowSchema;
         s32 as *mut Self
     }
     // Allocate new FFI32_ArrowSchema using Arc. Used to allocate the root
-    pub fn new_root(instance: &CoreInstance) -> *mut Self {
+    pub fn new_root(instance: &mut CoreInstance) -> *mut Self {
         let s32 = instance.new_ffi_schema();
         let s32 = to64(instance.allocator_base(), s32);
         s32 as *mut Self
@@ -168,7 +168,7 @@ impl FFI32_ArrowSchema {
     // }
 
     // Convert the given 64bit schema to 32bit schema
-    pub fn from(&mut self, instance: &CoreInstance, s64: &mut FFI64_ArrowSchema) {
+    pub fn from(&mut self, instance: &mut CoreInstance, s64: &mut FFI64_ArrowSchema) {
         let base = instance.allocator_base();
         unsafe {
             GLOBAL_ENV.base_mem = base;
@@ -353,14 +353,14 @@ pub fn release_exported_array(_array32: u32) {
 
 impl FFI32_ArrowArray {
     // Allocate new FFI32_ArrowArray using a Wasm allocations
-    pub(crate) fn new(instance: &CoreInstance) -> *mut Self {
+    pub(crate) fn new(instance: &mut CoreInstance) -> *mut Self {
         let allocated_offset = instance.allocate_buffer(size_of::<Self>() as u32);
         let a32 = to64(instance.allocator_base(), allocated_offset) as *mut FFI32_ArrowArray;
         a32 as *mut Self
     }
 
     // Allocate new FFI32_ArrowArray using a Wasm allocations
-    pub(crate) fn new_root(instance: &CoreInstance) -> *mut Self {
+    pub(crate) fn new_root(instance: &mut CoreInstance) -> *mut Self {
         let a32 = instance.new_ffi_array();
         let a32 = to64(instance.allocator_base(), a32);
         a32 as *mut Self
@@ -373,7 +373,7 @@ impl FFI32_ArrowArray {
     // }
 
     // Convert the given 64bit array to 32bit array
-    pub fn from(&mut self, instance: &CoreInstance, a64: &mut FFI64_ArrowArray) {
+    pub fn from(&mut self, instance: &mut CoreInstance, a64: &mut FFI64_ArrowArray) {
         let base = instance.allocator_base();
 
         // Allocate a memory for private_data struct
@@ -530,7 +530,7 @@ impl FFI64_ArrowSchema {
     /// 3. Overrides private data to hold `out32` and self allocations (from 2)
     /// 4. Overrides release callback to a function that frees out32* and self allocations
     ///     * frees out32 using an exported function
-    pub(crate) fn from(&mut self, instance: &CoreInstance, s32: &mut FFI32_ArrowSchema) {
+    pub(crate) fn from(&mut self, instance: &mut CoreInstance, s32: &mut FFI32_ArrowSchema) {
         // println!("start from 64 to 32 schema");
         let base = instance.allocator_base();
         self.format = to64(base, s32.format);
@@ -672,7 +672,7 @@ impl FFI64_ArrowArray {
         Default::default()
     }
 
-    pub fn from(&mut self, instance: &CoreInstance, a32: &mut FFI32_ArrowArray) {
+    pub fn from(&mut self, instance: &mut CoreInstance, a32: &mut FFI32_ArrowArray) {
         // println!("start from 32 to 64 array");
         let base = instance.allocator_base();
 

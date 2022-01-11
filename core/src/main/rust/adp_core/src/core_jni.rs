@@ -1,10 +1,10 @@
-use std::convert::TryInto;
 use crate::core::{CoreInstance, FFI_TransformContext, FFI_TransformOutput};
 use crate::types::jptr;
 use crate::types::Pointer;
 use jni::objects::JObject;
 use jni::sys::{jbyteArray, jlong};
 use jni::JNIEnv;
+use std::convert::TryInto;
 
 #[no_mangle]
 pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_newInstance(
@@ -56,10 +56,14 @@ pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_finish(
     instance_ptr: jptr,
     context: jlong,
     schema_ptr: jlong,
-    array_ptr: jlong
+    array_ptr: jlong,
 ) {
     let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
-    instance.finalize_tansform(context.try_into().unwrap(), schema_ptr.try_into().unwrap(), array_ptr.try_into().unwrap());
+    instance.finalize_tansform(
+        context.try_into().unwrap(),
+        schema_ptr.try_into().unwrap(),
+        array_ptr.try_into().unwrap(),
+    );
 }
 
 #[no_mangle]
@@ -170,7 +174,7 @@ pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_GetFirstElemOfTuple(
     _jre: JNIEnv,
     _object: JObject,
     instance_ptr: jptr,
-    tuple_ptr: jptr
+    tuple_ptr: jptr,
 ) -> jlong {
     let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
     instance.GetFirstElemOfTuple(tuple_ptr.try_into().unwrap()) as jlong
@@ -181,7 +185,7 @@ pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_GetSecondElemOfTuple(
     _jre: JNIEnv,
     _object: JObject,
     instance_ptr: jptr,
-    tuple_ptr: jptr
+    tuple_ptr: jptr,
 ) -> jlong {
     let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
     instance.GetSecondElemOfTuple(tuple_ptr.try_into().unwrap()) as jlong
@@ -192,7 +196,7 @@ pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_DropTuple(
     _jre: JNIEnv,
     _object: JObject,
     instance_ptr: jptr,
-    tuple_ptr: jptr
+    tuple_ptr: jptr,
 ) {
     let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
     instance.DropTuple(tuple_ptr.try_into().unwrap());
@@ -205,8 +209,38 @@ pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_TransformationIPC(
     instance_ptr: jptr,
     address: jptr,
     size: jlong,
+    conf_addr: jptr,
+    conf_size: jlong,
 ) -> jlong {
     let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
-    instance.TransformationIPC(address.try_into().unwrap(), size.try_into().unwrap()) as jlong
+    instance.TransformationIPC(
+        address.try_into().unwrap(),
+        size.try_into().unwrap(),
+        conf_addr.try_into().unwrap(),
+        conf_size.try_into().unwrap(),
+    ) as jlong
 }
 
+
+#[no_mangle]
+pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_convert64To32(
+    _jre: JNIEnv,
+    _object: JObject,
+    instance_ptr: jptr,
+    context: jlong,
+) {
+    let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
+    instance.convert_64_to_32(context.try_into().unwrap());
+}
+
+#[no_mangle]
+pub extern "C" fn Java_io_fybrik_adp_core_jni_JniWrapper_convert32To64(
+    _jre: JNIEnv,
+    _object: JObject,
+    instance_ptr: jptr,
+    context: jlong,
+) -> jptr {
+    let instance = Into::<Pointer<CoreInstance>>::into(instance_ptr).borrow();
+    let result = instance.convert_32_to_64(context.try_into().unwrap());
+    result
+}
